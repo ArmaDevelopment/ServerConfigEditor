@@ -1,0 +1,2636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Server Config Editor</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --border:#2a2f3a;
+    --text:#e6e9ef; --muted:#8b93a3; --accent:#5b9dff; --accent2:#3ddc97;
+    --danger:#ff5c6c; --warn:#ffb454; --input:#11131a;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f4f5f7; --panel:#ffffff; --panel2:#f0f1f4; --border:#dfe2e8;
+      --text:#1b1e24; --muted:#5b6270; --accent:#2f6fed; --accent2:#0f9d63;
+      --danger:#d3313f; --warn:#b06a00; --input:#ffffff;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.4;
+  }
+  header{
+    position:sticky; top:0; z-index:10; background:var(--panel);
+    border-bottom:1px solid var(--border); padding:14px 20px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  header h1{font-size:16px; margin:0; font-weight:650; flex:1 1 auto;}
+  header .sub{font-size:12px; color:var(--muted); width:100%; margin-top:2px;}
+  .active-config-bar{
+    display:none; align-items:center; gap:10px; padding:8px 20px;
+    background:var(--panel2); border-bottom:1px solid var(--border); font-size:13px;
+    position:sticky; top:0; z-index:9;
+  }
+  .active-config-bar.show{display:flex;}
+  .active-config-dot{width:9px; height:9px; border-radius:50%; background:var(--accent2); flex:0 0 auto;}
+  .active-config-dot.dirty{background:var(--warn);}
+  .active-config-text{color:var(--text);}
+  .active-config-text strong{font-weight:700;}
+  .active-config-text .dirty-label{color:var(--warn); font-weight:600;}
+  .active-config-bar .btn{margin-left:auto;}
+  .active-config-bar .btn + .btn{margin-left:0;}
+  .btn{
+    background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    padding:8px 14px; border-radius:8px; font-size:13px; cursor:pointer; font-weight:600;
+  }
+  .btn:hover{border-color:var(--accent);}
+  .btn.primary{background:var(--accent); color:#fff; border-color:var(--accent);}
+  .btn.good{background:var(--accent2); color:#04241a; border-color:var(--accent2);}
+  .btn.danger{background:transparent; color:var(--danger); border-color:var(--danger);}
+  .btn.small{padding:4px 9px; font-size:12px;}
+  input[type=file]{display:none;}
+  .shell{display:flex; align-items:flex-start; max-width:1180px; margin:0 auto; gap:4px;}
+  .sidebar{
+    width:190px; flex:0 0 190px; position:sticky; top:84px;
+    max-height:calc(100vh - 100px); overflow-y:auto; padding:18px 6px;
+  }
+  .sidebar .nav-tier{
+    font-size:10px; text-transform:uppercase; color:var(--muted); letter-spacing:.06em;
+    margin:16px 10px 4px;
+  }
+  .sidebar .nav-tier:first-child{margin-top:0;}
+  .sidebar a{
+    display:block; padding:6px 10px; border-radius:7px; font-size:13px;
+    color:var(--muted); text-decoration:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .sidebar a:hover{background:var(--panel2); color:var(--text);}
+  .sidebar a.active{background:var(--accent); color:#fff;}
+  main{flex:1; min-width:0; max-width:820px; padding:20px 16px 80px;}
+  @media (max-width: 860px){
+    .shell{flex-direction:column;}
+    .sidebar{
+      position:static; width:100%; flex:none; display:flex; overflow-x:auto;
+      max-height:none; padding:10px 16px; gap:4px; border-bottom:1px solid var(--border);
+    }
+    .sidebar .nav-tier{display:none;}
+    main{max-width:100%;}
+  }
+  .tier-label{
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+    margin:26px 2px 10px; display:flex; align-items:center; gap:8px;
+  }
+  .tier-label .n{
+    background:var(--accent); color:#fff; border-radius:999px; width:18px; height:18px;
+    display:inline-flex; align-items:center; justify-content:center; font-size:11px;
+  }
+  details.card{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    margin-bottom:12px; overflow:hidden;
+  }
+  details.card > summary{
+    list-style:none; cursor:pointer; padding:13px 16px; font-weight:650; font-size:14px;
+    display:flex; align-items:center; gap:10px; user-select:none;
+  }
+  details.card > summary::-webkit-details-marker{display:none;}
+  details.card > summary .chev{transition:transform .15s; color:var(--muted); font-size:11px;}
+  details.card[open] > summary .chev{transform:rotate(90deg);}
+  details.card > summary .badge{
+    margin-left:auto; font-size:11px; font-weight:600; color:var(--muted);
+    background:var(--panel2); border:1px solid var(--border); padding:2px 8px; border-radius:999px;
+  }
+  .card-body{padding:4px 16px 16px;}
+  details.sub{
+    background:var(--panel2); border:1px solid var(--border); border-radius:10px;
+    margin:10px 0; overflow:hidden;
+  }
+  details.sub > summary.subhead{
+    list-style:none; cursor:pointer; font-size:12px; font-weight:700; color:var(--muted);
+    padding:10px 12px; text-transform:uppercase; letter-spacing:.04em;
+    display:flex; align-items:center; gap:8px; user-select:none;
+  }
+  details.sub > summary.subhead::-webkit-details-marker{display:none;}
+  details.sub > summary .chev{transition:transform .15s; font-size:10px;}
+  details.sub[open] > summary .chev{transform:rotate(90deg);}
+  .sub-body{padding:0 12px 12px;}
+  .field-row{
+    display:grid; grid-template-columns:190px 1fr; gap:10px; align-items:center;
+    padding:6px 0; border-bottom:1px dashed var(--border);
+  }
+  .field-row:last-child{border-bottom:none;}
+  .field-row label{font-size:13px; color:var(--muted); word-break:break-word;}
+  .field-row input, .field-row textarea{width:100%;}
+  /* Themed consistently everywhere — including list rows (admins, mods,
+     platforms) that aren't inside a .field-row — so nothing renders as a
+     stray white box regardless of theme. */
+  input[type=text], input[type=number], textarea{
+    background:var(--input); color:var(--text); border:1px solid var(--border);
+    border-radius:7px; padding:7px 9px; font-size:13px; font-family:inherit;
+  }
+  textarea{resize:vertical; min-height:32px;}
+  input[type=text]:focus, input[type=number]:focus, textarea:focus{outline:none; border-color:var(--accent);}
+  input[type=checkbox]{width:17px; height:17px; accent-color:var(--accent);}
+  .array-item{
+    display:flex; gap:8px; align-items:center; padding:5px 0;
+  }
+  .array-item input{flex:1;}
+  .obj-array-item{
+    border:1px solid var(--border); border-radius:9px; padding:8px 10px; margin:8px 0; background:var(--panel);
+  }
+  .obj-array-item .top{display:flex; justify-content:flex-end; margin-bottom:2px;}
+  .add-row{margin-top:8px;}
+  .mod-search{
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--input); color:var(--text); font-size:13px;
+  }
+  .mod-count{font-size:12px; color:var(--muted); margin-bottom:6px;}
+  .mod-toolbar{display:flex; gap:8px; align-items:center; margin-bottom:8px;}
+  .mod-toolbar .mod-search{flex:1; min-width:0;}
+  .mod-list-scroll{
+    max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:9px;
+    background:var(--panel); padding:2px;
+  }
+  .mod-compact-row{
+    display:flex; align-items:center; gap:6px; padding:4px 6px;
+    border-bottom:1px solid var(--border);
+  }
+  .mod-compact-row:last-child{border-bottom:none;}
+  .mod-compact-row.dragging{opacity:.4;}
+  .mod-compact-row.drag-over{outline:2px dashed var(--accent); outline-offset:-2px; border-radius:6px;}
+  .mod-compact-drag{
+    flex:0 0 14px; color:var(--muted); font-size:13px; cursor:grab;
+    user-select:none; text-align:center;
+  }
+  .mod-compact-drag:active{cursor:grabbing;}
+  .mod-compact-pos{
+    flex:0 0 40px; width:40px; padding:3px 4px; font-size:11px; text-align:center;
+    border-radius:5px; border:1px solid var(--border); background:var(--input); color:var(--text);
+  }
+  .mod-compact-id, .mod-compact-name, .mod-compact-version{
+    padding:4px 6px; font-size:12px; border-radius:5px; border:1px solid var(--border);
+    background:var(--input); color:var(--text); min-width:0;
+  }
+  .mod-compact-id{flex:1 1 110px; font-family:monospace;}
+  .mod-compact-name{flex:2 1 140px;}
+  .mod-compact-version{flex:0 0 80px;}
+  .mod-compact-note{flex:1 1 auto; color:var(--muted); font-style:italic; border-style:dashed;}
+  .mod-compact-remove{
+    flex:0 0 auto; width:24px; height:24px; padding:0; line-height:1; font-size:15px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .mod-compact-select{flex:0 0 auto;}
+  .mod-list-empty{padding:14px; font-size:12px; color:var(--muted); text-align:center;}
+  .admin-cache-row{display:flex; gap:8px; margin-top:10px; align-items:center;}
+  .admin-cache-select{
+    flex:1; min-width:0; padding:7px 9px; border-radius:7px; border:1px solid var(--border);
+    background:var(--input); color:var(--text); font-size:13px; font-family:inherit;
+  }
+  .admin-cache-toolbar{display:flex; gap:8px; margin-bottom:8px;}
+  .admin-cache-scroll{
+    max-height:220px; overflow-y:auto; border:1px solid var(--border); border-radius:9px;
+    background:var(--panel); padding:2px;
+  }
+  .admin-cache-compact-row{
+    display:flex; align-items:center; gap:6px; padding:4px 6px;
+    border-bottom:1px solid var(--border);
+  }
+  .admin-cache-compact-row:last-child{border-bottom:none;}
+  .admin-cache-compact-name, .admin-cache-compact-id{
+    padding:4px 6px; font-size:12px; border-radius:5px; border:1px solid var(--border);
+    background:var(--input); color:var(--text); min-width:0;
+  }
+  .admin-cache-compact-name{flex:1 1 140px;}
+  .admin-cache-compact-id{flex:1 1 110px; font-family:monospace;}
+  .admin-cache-compact-remove{
+    flex:0 0 auto; width:24px; height:24px; padding:0; line-height:1; font-size:15px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .admin-cache-empty{padding:12px; font-size:12px; color:var(--muted);}
+  .saved-configs-toolbar{margin-bottom:8px;}
+  .saved-configs-scroll{
+    max-height:320px; overflow-y:auto; border:1px solid var(--border); border-radius:9px;
+    background:var(--panel); padding:2px;
+  }
+  .saved-config-row{
+    display:flex; align-items:center; gap:8px; padding:7px 9px;
+    border-bottom:1px solid var(--border);
+  }
+  .saved-config-row:last-child{border-bottom:none;}
+  .saved-config-info{flex:1; min-width:0;}
+  .saved-config-name{font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .saved-config-meta{font-size:11px; color:var(--muted); margin-top:1px;}
+  .saved-config-empty{padding:14px; font-size:12px; color:var(--muted); text-align:center;}
+  .stub{
+    border:1px dashed var(--border); border-radius:9px; padding:10px 12px; margin-top:10px;
+    font-size:12px; color:var(--muted); background:var(--panel2);
+  }
+  .mod-lookup{
+    border:1px solid var(--border); border-radius:9px; padding:10px 12px; margin-top:14px;
+    background:var(--panel2);
+  }
+  .mod-lookup-heading{font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em;}
+  .mod-lookup-input{margin-bottom:6px;}
+  .mod-lookup-status{font-size:12px; color:var(--muted); min-height:16px; margin-bottom:4px;}
+  .mod-lookup-results{display:flex; flex-direction:column; gap:6px;}
+  .mod-lookup-row{
+    display:flex; align-items:center; gap:8px; padding:6px 8px;
+    border:1px solid var(--border); border-radius:8px; background:var(--panel);
+  }
+  .mod-lookup-thumb{width:32px; height:32px; border-radius:6px; object-fit:cover; flex:0 0 auto; background:var(--input);}
+  .mod-lookup-info{flex:1; min-width:0;}
+  .mod-lookup-name{font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .mod-lookup-id{font-size:11px; color:var(--muted); font-family:monospace;}
+  .mod-lookup-attribution{font-size:11px; color:var(--muted); margin-top:8px; text-align:right;}
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.6); display:none;
+    align-items:center; justify-content:center; z-index:1000; padding:20px;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    max-width:560px; width:100%; max-height:85vh; position:relative;
+    padding:20px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+    display:flex; flex-direction:column;
+  }
+  .modal-body{overflow-y:auto; min-height:0; flex:1 1 auto;}
+  .modal-close{
+    position:absolute; top:8px; right:8px; background:var(--panel); border:1px solid var(--border);
+    border-radius:7px; color:var(--muted); font-size:20px; line-height:1; cursor:pointer;
+    padding:3px 8px; z-index:1;
+  }
+  .modal-close:hover{color:var(--text);}
+  .modal-loading, .modal-error{font-size:13px; color:var(--muted); padding:24px 0; text-align:center;}
+  .modal-error{color:var(--danger);}
+  .modal-gallery{display:flex; gap:8px; overflow-x:auto; margin-bottom:14px; padding-bottom:4px;}
+  .modal-gallery img{height:140px; border-radius:8px; object-fit:cover; flex:0 0 auto;}
+  .modal-title{font-size:18px; margin:0 0 4px; padding-right:26px;}
+  .modal-meta{font-size:12px; color:var(--muted); margin-bottom:10px;}
+  .modal-tags{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .modal-tag{
+    font-size:11px; padding:2px 8px; border-radius:999px; background:var(--panel2);
+    border:1px solid var(--border); color:var(--muted);
+  }
+  .modal-description{font-size:13px; line-height:1.5; margin-bottom:14px; white-space:pre-wrap;}
+  .modal-deps{margin-bottom:16px;}
+  .modal-deps-heading{font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.03em;}
+  .modal-deps-list{display:flex; flex-direction:column; gap:6px;}
+  .modal-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  #modOverlay{z-index:1001;}
+  .modal-wide{max-width:840px;}
+  .mod-list-header{margin-bottom:12px;}
+  .mod-list-io{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;}
+  .mod-list-toolbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;}
+  .mod-list-toolbar .mod-search{flex:1 1 200px; min-width:120px;}
+  .mod-list-bulk{display:flex; gap:8px; align-items:center; margin-left:auto; flex-wrap:wrap;}
+  .mod-list-select-all{display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); white-space:nowrap;}
+  .mod-list-overlay-body{
+    max-height:min(55vh, 520px); overflow-y:auto; border:1px solid var(--border); border-radius:9px;
+    background:var(--panel2); padding:2px; margin-bottom:16px;
+  }
+  .mod-dep-review{
+    border:1px solid var(--border); border-radius:9px; padding:10px 12px; margin-bottom:16px;
+    background:var(--panel2);
+  }
+  .mod-dep-review-header{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+  .mod-dep-review-title{font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.03em;}
+  .mod-dep-review-status{font-size:12px; color:var(--muted); margin-top:8px;}
+  .mod-dep-review-results{margin-top:10px;}
+  .mod-dep-review-results .btn.primary{margin-bottom:8px;}
+  .mod-dep-review-rows{
+    display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto;
+    border:1px solid var(--border); border-radius:8px; padding:6px; background:var(--panel);
+  }
+  .drop{
+    border:2px dashed var(--border); border-radius:12px; padding:30px; text-align:center;
+    color:var(--muted); font-size:13px; margin-bottom:16px;
+  }
+  .drop.drag{border-color:var(--accent); color:var(--accent);}
+  .toast{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    background:var(--accent2); color:#04241a; padding:9px 18px; border-radius:999px;
+    font-size:13px; font-weight:700; opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .toast.show{opacity:1;}
+  #rawWrap textarea{
+    width:100%; min-height:260px; background:var(--input); color:var(--text);
+    border:1px solid var(--border); border-radius:9px; padding:12px; font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12.5px;
+  }
+  #rawWrap textarea.has-error{border-color:var(--danger); box-shadow:0 0 0 1px var(--danger);}
+  #rawWrap textarea::selection{background:var(--danger); color:#fff;}
+  .json-error{
+    background:rgba(255,92,108,.12); border:1px solid var(--danger); color:var(--danger);
+    border-radius:8px; padding:8px 12px; font-size:12.5px; margin-bottom:8px;
+    font-family:ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap;
+  }
+  .empty-msg{color:var(--muted); font-size:13px; padding:10px 0;}
+</style>
+</head>
+<body>
+
+<header id="mainHeader">
+  <h1>⚙️ Server Config Editor</h1>
+  <button class="btn" id="loadBtn">Load JSON File</button>
+  <input type="file" id="fileInput" accept=".json,application/json">
+  <button class="btn" id="rawBtn">Raw JSON</button>
+  <button class="btn" id="savedConfigsBtn">Saved Configs</button>
+  <button class="btn good" id="downloadBtn">Download JSON</button>
+  <div class="sub">Categories are prioritized: <strong>Game Settings</strong> → <strong>Mods</strong> → everything else. Collapse/expand any card. Your edits are auto-saved in this browser and restored next time you open this page — click Download whenever you want an actual .json file.</div>
+</header>
+
+<div class="active-config-bar" id="activeConfigBar">
+  <span class="active-config-dot" id="activeConfigDot"></span>
+  <span class="active-config-text">Editing <strong id="activeConfigNameEl"></strong> — <span id="activeConfigStatusEl"></span></span>
+  <button type="button" class="btn small primary" id="saveActiveConfigBtn">💾 Save</button>
+  <button type="button" class="btn small" id="stopTrackingConfigBtn" title="Stop tracking this saved config">Stop Tracking</button>
+</div>
+
+<div class="shell">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <div class="drop" id="dropZone">Drag &amp; drop a server config .json here, or use "Load JSON File" above. A sample config is loaded by default so you can explore the tool right away.</div>
+
+    <div class="modal-overlay" id="rawWrap">
+      <div class="modal modal-wide" role="dialog" aria-modal="true">
+        <button type="button" class="modal-close" aria-label="Close" id="rawCloseBtn">×</button>
+        <div class="modal-body">
+          <div class="tier-label">Raw JSON (paste to replace, or copy current state)</div>
+          <div id="jsonError" class="json-error" style="display:none;"></div>
+          <textarea id="rawArea" spellcheck="false"></textarea>
+          <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn primary" id="applyRaw">Apply Pasted JSON</button>
+            <button class="btn" id="syncRaw">Refresh From Current State</button>
+            <button class="btn danger" id="resetJson" style="margin-left:auto;">Reset to Default Config</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="savedConfigsWrap">
+      <div class="modal modal-wide" role="dialog" aria-modal="true">
+        <button type="button" class="modal-close" aria-label="Close" id="savedConfigsCloseBtn">×</button>
+        <div class="modal-body">
+          <div class="tier-label">Saved Configs — separate named save slots in this browser, on top of the automatic session save</div>
+          <div class="saved-configs-toolbar">
+            <button class="btn small primary" id="saveConfigAsBtn">💾 Save Current As…</button>
+          </div>
+          <div class="saved-configs-scroll" id="savedConfigsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="root"></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------------------------------------------------------------------
+   Default sample data — the user's actual server config, pre-loaded so
+   the tool is immediately usable. Replace via "Load JSON File" or the
+   Raw JSON box.
+--------------------------------------------------------------------- */
+const DEFAULT_CONFIG = {
+  "publicAddress": "0.0.0.0",
+  "publicPort": 2001,
+  "bindAddress": "0.0.0.0",
+  "bindPort": 2001,
+  "a2s": { "address": "0.0.0.0", "port": 17777 },
+  "rcon": {
+    "address": "0.0.0.0", "port": 19999, "permission": "monitor", "password": "",
+    "blacklist": [], "whitelist": []
+  },
+  "game": {
+    "admins": [],
+    "gameProperties": {
+      "VONCanTransmitCrossFaction": false,
+      "VONDisableDirectSpeechUI": false,
+      "VONDisableUI": false,
+      "battlEye": true,
+      "disableThirdPerson": false,
+      "fastValidation": true,
+      "missionHeader": {
+        "m_fXpMultiplier": 1.0,
+        "m_iPlayerCount": 40,
+        "m_eEditableGameFlags": 6,
+        "m_eDefaultGameFlags": 6
+      },
+      "persistence": { "autoSaveInterval": 120, "saveRetention": 3, "loadSessionSave": true },
+      "networkViewDistance": 1000,
+      "serverMaxViewDistance": 1600,
+      "serverMinGrassDistance": 0
+    },
+    "maxPlayers": 32,
+    "mods": [],
+    "name": "My Arma Reforger Server",
+    "password": "",
+    "passwordAdmin": "",
+    "scenarioId": "{ECC61978EDCC2B5A}Missions/23_Campaign.conf",
+    "visible": true,
+    "crossPlatform": true,
+    "supportedPlatforms": ["PLATFORM_PC", "PLATFORM_XBL", "PLATFORM_PSN"]
+  },
+  "operating": {
+    "disableAI": false,
+    "disableServerShutdown": true,
+    "lobbyPlayerSynchronise": true,
+    "joinQueue": { "maxSize": 10 },
+    "slotReservationTimeout": 60,
+    "aiLimit": -1
+  }
+};
+
+// NOTE on design: the underlying `data` object always keeps the REAL config
+// schema (nested exactly as the server expects — e.g. game.gameProperties.
+// missionHeader, operating.joinQueue.maxSize). Any reorganizing the UI does
+// (hoisting Mission Header out to sit beside Game Properties, showing Join
+// Queue Max Size as a flat field) happens only in how renderObject/render*
+// functions read and write those real nested objects — never by moving or
+// deleting data — so Download/Raw JSON always stay schema-correct.
+
+// A blank mod version isn't real data — this strips an empty "version": ""
+// key wherever it shows up in loaded data (rather than only preventing new
+// blank ones), so it's never exported as a no-op empty string.
+function stripEmptyModVersions(d){
+  const mods = d && d.game && Array.isArray(d.game.mods) ? d.game.mods : null;
+  if (mods){
+    mods.forEach(m=>{
+      if (m && typeof m === 'object' && 'version' in m &&
+          (m.version === '' || m.version === null || m.version === undefined)){
+        delete m.version;
+      }
+    });
+  }
+  return d;
+}
+
+// The working config itself is cached in localStorage too, so the tool
+// reopens with whatever you were last editing instead of resetting to the
+// sample config every time. Wrapped defensively: storage can be unavailable
+// (private browsing, a sandboxed preview), in which case edits just stay
+// in-memory for this session, same as before this existed.
+const DATA_CACHE_KEY = 'armaConfigEditor.data.v1';
+function loadCachedData(){
+  try{
+    const raw = localStorage.getItem(DATA_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed;
+  }catch(_e){
+    return null;
+  }
+}
+function saveDataCache(){
+  try{ localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(data)); }
+  catch(_e){ /* storage unavailable — edits stay in-memory only for this session */ }
+  // Recompute the active-config dirty indicator any time the working data
+  // might have changed — this is what makes "any change" (typed edits,
+  // add/remove buttons, drag reorders, raw JSON edits, imports…) mark the
+  // bar dirty, without needing to hook each mutation path individually.
+  if (typeof updateActiveConfigBar === 'function') updateActiveConfigBar();
+}
+let dataSaveDebounce = null;
+function scheduleDataSave(){
+  clearTimeout(dataSaveDebounce);
+  dataSaveDebounce = setTimeout(saveDataCache, 400);
+}
+
+function freshDefaultConfig(){
+  return stripEmptyModVersions(JSON.parse(JSON.stringify(DEFAULT_CONFIG)));
+}
+
+const cachedData = loadCachedData();
+let restoredFromCache = !!cachedData;
+let data = cachedData ? stripEmptyModVersions(cachedData) : freshDefaultConfig();
+
+// Named save slots — separate from the single automatic session save above.
+// Each entry is a full standalone snapshot: { name, savedAt, data }.
+const SAVED_CONFIGS_KEY = 'armaConfigEditor.savedConfigs.v1';
+function loadSavedConfigs(){
+  try{
+    const raw = localStorage.getItem(SAVED_CONFIGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(e => e && typeof e === 'object' && typeof e.name === 'string' && e.data && typeof e.data === 'object');
+  }catch(_e){
+    return [];
+  }
+}
+// Returns true on success, false if the write failed (e.g. storage full) —
+// callers roll back their in-memory change and tell the user rather than
+// showing a false "Saved" toast.
+function persistSavedConfigs(){
+  try{
+    localStorage.setItem(SAVED_CONFIGS_KEY, JSON.stringify(savedConfigs));
+    return true;
+  }catch(_e){
+    return false;
+  }
+}
+let savedConfigs = loadSavedConfigs();
+
+// Tracks which Saved Configs slot (if any) is "currently loaded" — shown as
+// a bar under the header with a dot that turns amber and a Save button once
+// the working data has diverged from that slot's last-saved snapshot.
+// Dirtiness is computed by comparing serialized data rather than hooking
+// every mutation path individually (there are many — typed edits, add/remove
+// buttons, drag reorders, raw JSON edits, imports…), so it can't miss one.
+let activeConfigName = null;
+let activeConfigSnapshot = null; // JSON.stringify(data) as of the last load/save of the active slot
+
+// A small personal address book of admins (id + friendly name), stored in
+// this browser's localStorage so it survives across configs and reloads —
+// separate from any one config's game.admins list. Wrapped defensively:
+// storage can be unavailable (private browsing, a sandboxed preview), in
+// which case the cache just falls back to in-memory-only for this session.
+const ADMIN_CACHE_KEY = 'armaConfigEditor.adminCache.v1';
+function loadAdminCache(){
+  try{
+    const raw = localStorage.getItem(ADMIN_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    // Migrate any entry saved under the old "label" field name to "name".
+    return parsed.filter(e => e && typeof e === 'object').map(e=>{
+      if (e.name === undefined && e.label !== undefined){
+        const { label, ...rest } = e;
+        return { ...rest, name: label };
+      }
+      return e;
+    });
+  }catch(_e){
+    return [];
+  }
+}
+function saveAdminCache(){
+  try{ localStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify(adminCache)); }
+  catch(_e){ /* storage unavailable — cache stays in-memory for this session */ }
+}
+function upsertAdminCacheEntry(id, name){
+  if (!id) return;
+  const existing = adminCache.find(a => a.id === id);
+  if (existing) existing.name = name;
+  else adminCache.push({ id, name });
+  saveAdminCache();
+}
+let adminCache = loadAdminCache();
+
+// ModiScover mod lookup — https://modiscover.eu/api-docs#mods
+const MODISCOVER_API_BASE = 'https://modiscover.eu/api/v1';
+
+// Normalizes one mod record (from a search result OR a single-mod-details
+// response — they're the same shape) into the stub shape used everywhere
+// in this UI. `fallbackId` is used if the record itself has no workshop_id
+// (shouldn't normally happen, but keeps a lookup-by-id caller safe).
+function normalizeModStub(d, fallbackId){
+  const modId = String(d.workshop_id ?? d.workshopId ?? d.id ?? fallbackId ?? '');
+  return {
+    modId,
+    name: d.name || d.title || modId,
+    author: d.author || d.author_name || d.creator || '',
+    version: d.version || '',
+    description: d.description || d.summary || '',
+    imageUrl: d.image_url || d.imageUrl || '',
+    images: Array.isArray(d.images) ? d.images
+      : Array.isArray(d.screenshots) ? d.screenshots
+      : (d.image_url ? [d.image_url] : []),
+    sizeBytes: d.size_bytes ?? d.size ?? d.file_size ?? null,
+    totalSizeBytes: d.total_size_bytes ?? d.totalSizeBytes ?? null,
+    tags: Array.isArray(d.tags) ? d.tags : [],
+    dependencyIds: Array.isArray(d.dependency_ids) ? d.dependency_ids.map(String)
+      : Array.isArray(d.dependencies) ? d.dependencies.map(String) : []
+  };
+}
+
+// Full-text mod search — this endpoint returns rich records (name, author,
+// image, tags, dependency_ids, size) in one call, so search results already
+// carry everything needed for both the result row and the details overlay.
+async function searchModiscoverMods(query){
+  let res;
+  try{
+    res = await fetch(MODISCOVER_API_BASE + '/mods?search=' + encodeURIComponent(query) + '&limit=20');
+  }catch(_e){
+    // Network failure or CORS block — can't tell which from here, so give
+    // an honest, actionable message rather than pretending it's a "no results".
+    throw new Error("Couldn't reach ModiScover (network issue or the site is blocking browser requests). Try again, or add the mod ID manually.");
+  }
+  if (res.status === 429){
+    throw new Error('ModiScover is rate-limiting requests right now — wait a bit and try again.');
+  }
+  if (!res.ok){
+    throw new Error('ModiScover returned an error (HTTP ' + res.status + ').');
+  }
+  let json;
+  try{
+    json = await res.json();
+  }catch(_e){
+    throw new Error("ModiScover's response wasn't valid JSON.");
+  }
+  // Be flexible about response shape in case it's wrapped.
+  const list = Array.isArray(json) ? json : (Array.isArray(json?.mods) ? json.mods : (Array.isArray(json?.results) ? json.results : []));
+  return list.map(m => normalizeModStub(m)).filter(m => m.modId);
+}
+
+// Full mod details for one workshop ID (name, author, images, description,
+// size, tags, dependency_ids).
+async function fetchModiscoverModDetails(id){
+  let res;
+  try{
+    res = await fetch(MODISCOVER_API_BASE + '/mods/' + encodeURIComponent(id));
+  }catch(_e){
+    throw new Error("Couldn't reach ModiScover for mod details (network issue or the site is blocking browser requests).");
+  }
+  if (res.status === 429){
+    throw new Error('ModiScover is rate-limiting requests right now — wait a bit and try again.');
+  }
+  if (!res.ok){
+    throw new Error('ModiScover returned an error (HTTP ' + res.status + ') fetching mod details.');
+  }
+  try{
+    return await res.json();
+  }catch(_e){
+    throw new Error("ModiScover's response wasn't valid JSON.");
+  }
+}
+
+// Resolves a workshop ID into a full normalized stub, caching results for
+// the lifetime of the page (dependency lists frequently repeat mods across
+// different parents, and the same mod's overlay may be reopened).
+const modStubCache = new Map();
+function resolveModStub(id){
+  if (modStubCache.has(id)) return modStubCache.get(id);
+  const p = fetchModiscoverModDetails(id)
+    .then(json => {
+      // The single-mod endpoint wraps the record as { mod: {...}, deps_size_bytes,
+      // recursive_size_bytes } rather than returning the mod fields flat (that
+      // flat shape is only what the list/search endpoint returns).
+      const modObj = json && typeof json === 'object' && json.mod && typeof json.mod === 'object' ? json.mod : json;
+      const stub = normalizeModStub(modObj, id);
+      if (json && json.recursive_size_bytes != null) stub.recursiveSizeBytes = json.recursive_size_bytes;
+      if (json && json.deps_size_bytes != null) stub.depsSizeBytes = json.deps_size_bytes;
+      return stub;
+    })
+    .catch(_e => ({ modId: id, name: id, author: '', version: '', description: '', imageUrl: '', images: [], sizeBytes: null, totalSizeBytes: null, tags: [], dependencyIds: [] }));
+  modStubCache.set(id, p);
+  return p;
+}
+
+// Runs `fn` over `items` with at most `limit` in flight at once — used so a
+// dependency review over ~200 installed mods doesn't fire 200+ concurrent
+// requests at ModiScover.
+async function mapWithConcurrency(items, limit, fn){
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker(){
+    while (next < items.length){
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+// Resolves the FULL transitive dependency closure of a mod: its direct
+// dependencies, their dependencies, and so on ("a parent mod includes all
+// child deps, grandchild deps, and so on"). Returns a Map<modId, stub> of
+// every mod found this way (not including rootStub itself). Guards against
+// cycles/huge graphs with a visited-set and a generation cap.
+async function resolveAllDependencies(rootStub){
+  const visited = new Set([rootStub.modId]);
+  const result = new Map();
+  let frontier = (rootStub.dependencyIds || []).filter(id => !visited.has(id));
+  frontier.forEach(id => visited.add(id));
+  let guard = 0;
+  while (frontier.length && guard < 40){
+    guard++;
+    const stubs = await mapWithConcurrency(frontier, 5, id => resolveModStub(id));
+    stubs.forEach(stub => result.set(stub.modId, stub));
+    const nextFrontier = [];
+    stubs.forEach(stub=>{
+      (stub.dependencyIds || []).forEach(depId=>{
+        if (!visited.has(depId)){
+          visited.add(depId);
+          nextFrontier.push(depId);
+        }
+      });
+    });
+    frontier = nextFrontier;
+  }
+  return result;
+}
+
+// A single "picture / name / id" row used both for search results and for
+// the dependency list inside the details overlay.
+function createModLookupRow(modStub, { onDetails, onAdd, addLabel, alreadyAdded, extraInfoText, onAddWithDeps } = {}){
+  const row = document.createElement('div');
+  row.className = 'mod-lookup-row';
+
+  if (modStub.imageUrl){
+    const thumb = document.createElement('img');
+    thumb.className = 'mod-lookup-thumb';
+    thumb.src = modStub.imageUrl;
+    thumb.alt = '';
+    thumb.loading = 'lazy';
+    row.appendChild(thumb);
+  }
+
+  const info = document.createElement('div');
+  info.className = 'mod-lookup-info';
+  const nameEl = document.createElement('div');
+  nameEl.className = 'mod-lookup-name';
+  nameEl.textContent = modStub.name || '(unnamed mod)';
+  const idEl = document.createElement('div');
+  idEl.className = 'mod-lookup-id';
+  idEl.textContent = modStub.modId + (extraInfoText ? ' · ' + extraInfoText : '');
+  info.appendChild(nameEl);
+  info.appendChild(idEl);
+  row.appendChild(info);
+
+  if (onDetails){
+    const detailsBtn = document.createElement('button');
+    detailsBtn.type = 'button';
+    detailsBtn.className = 'btn small';
+    detailsBtn.textContent = 'Details';
+    detailsBtn.addEventListener('click', onDetails);
+    row.appendChild(detailsBtn);
+  }
+
+  if (onAdd){
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn small';
+    addBtn.textContent = alreadyAdded ? 'Added' : (addLabel || '+ Add');
+    addBtn.disabled = !!alreadyAdded;
+    addBtn.addEventListener('click', ()=> onAdd(addBtn));
+    row.appendChild(addBtn);
+  }
+
+  if (onAddWithDeps){
+    const depsBtn = document.createElement('button');
+    depsBtn.type = 'button';
+    depsBtn.className = 'btn small';
+    depsBtn.textContent = '+ Deps';
+    depsBtn.title = 'Add this mod and all of its dependencies (including nested ones)';
+    depsBtn.addEventListener('click', ()=> onAddWithDeps(depsBtn));
+    row.appendChild(depsBtn);
+  }
+
+  return row;
+}
+
+function formatBytes(n){
+  if (n === null || n === undefined || n === '') return null;
+  const num = Number(n);
+  if (!Number.isFinite(num) || num < 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let v = num, i = 0;
+  while (v >= 1024 && i < units.length - 1){ v /= 1024; i++; }
+  return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i];
+}
+
+// Singleton overlay element, created lazily and reused across renders
+// (it lives outside #root so a full rerenderAll() doesn't destroy it).
+function getModOverlay(){
+  let ov = document.getElementById('modOverlay');
+  if (ov) return ov;
+  ov = document.createElement('div');
+  ov.id = 'modOverlay';
+  ov.className = 'modal-overlay';
+  ov.innerHTML = '<div class="modal" role="dialog" aria-modal="true"><button type="button" class="modal-close" aria-label="Close">×</button><div class="modal-body"></div></div>';
+  // Deliberately no click-outside-to-close — only the × button or Escape close this.
+  ov.querySelector('.modal-close').addEventListener('click', closeModOverlay);
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && ov.classList.contains('show')) closeModOverlay(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+function closeModOverlay(){
+  const ov = document.getElementById('modOverlay');
+  if (ov) ov.classList.remove('show');
+}
+
+const root = document.getElementById('root');
+const toastEl = document.getElementById('toast');
+function toast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  setTimeout(()=>toastEl.classList.remove('show'), 1600);
+}
+
+// Whole-key exceptions: acronyms/names that should never be word-split.
+const EXACT_TITLES = { a2s: 'A2S', rcon: 'RCON', battleye: 'BattlEye' };
+
+function titleCase(rawKey){
+  const lower = rawKey.toLowerCase();
+  if (EXACT_TITLES[lower]) return EXACT_TITLES[lower];
+
+  let s = rawKey;
+  const hadHungarianPrefix = /^m_/.test(s);
+  s = s.replace(/^m_/, '');
+  // Arma's m_-prefixed fields use Hungarian notation (m_fFoo = float Foo,
+  // m_iFoo = int, m_sFoo = string, m_bFoo = bool, m_aFoo = array) — strip
+  // that single-letter type tag too, so titles don't leak a stray F/I/S/B/A.
+  if (hadHungarianPrefix) s = s.replace(/^[fisbaue](?=[A-Z])/, '');
+
+  s = s
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')   // camelCase -> spaced
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') // ACRONYMWord -> ACRONYM Word
+    .replace(/_/g, ' ')
+    .trim();
+
+  return s.replace(/^./, c => c.toUpperCase());
+}
+
+/* ---- generic field renderers (mutate `data` in place) ---- */
+
+function makeRow(labelText, inputEl){
+  const row = document.createElement('div');
+  row.className = 'field-row';
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  row.appendChild(label);
+  row.appendChild(inputEl);
+  return row;
+}
+
+function primitiveInput(value, onChange){
+  if (typeof value === 'boolean'){
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = value;
+    cb.addEventListener('change', ()=> onChange(cb.checked));
+    return cb;
+  }
+  if (typeof value === 'number'){
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.step = 'any';
+    inp.value = value;
+    inp.addEventListener('input', ()=> onChange(inp.value === '' ? 0 : Number(inp.value)));
+    return inp;
+  }
+  // string
+  const long = typeof value === 'string' && value.length > 60;
+  const inp = document.createElement(long ? 'textarea' : 'input');
+  if (!long) inp.type = 'text';
+  inp.value = value ?? '';
+  inp.addEventListener('input', ()=> onChange(inp.value));
+  return inp;
+}
+
+function renderPrimitiveArray(container, arr, key){
+  const wrap = document.createElement('div');
+  arr.forEach((val, idx)=>{
+    const item = document.createElement('div');
+    item.className = 'array-item';
+    const inp = primitiveInput(val, (v)=>{ arr[idx] = v; });
+    item.appendChild(inp);
+    const rm = document.createElement('button');
+    rm.className = 'btn small danger';
+    rm.textContent = '✕';
+    rm.addEventListener('click', ()=>{ arr.splice(idx,1); rerenderAll(); });
+    item.appendChild(rm);
+    wrap.appendChild(item);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn small add-row';
+  addBtn.textContent = '+ Add';
+  addBtn.addEventListener('click', ()=>{
+    arr.push(typeof arr[0] === 'number' ? 0 : '');
+    rerenderAll();
+  });
+  wrap.appendChild(addBtn);
+  container.innerHTML = '';
+  container.appendChild(wrap);
+  return container;
+}
+
+// Admins list: same editable ID rows as a normal primitive array, plus a
+// personal cache (💾 save an ID with a name; pick a cached admin to add
+// their ID without retyping it) and a small manager for that cache.
+function renderAdminsSection(container, arr, path){
+  container.innerHTML = '';
+
+  arr.forEach((val, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'array-item';
+    const inp = primitiveInput(val, (v)=>{ arr[idx] = v; });
+    row.appendChild(inp);
+
+    const cacheBtn = document.createElement('button');
+    cacheBtn.type = 'button';
+    cacheBtn.className = 'btn small';
+    cacheBtn.textContent = '💾';
+    cacheBtn.title = 'Save this ID to your admin cache';
+    cacheBtn.addEventListener('click', ()=>{
+      const id = String(arr[idx] ?? '').trim();
+      if (!id){ toast('Nothing to save — this ID is empty'); return; }
+      const existing = adminCache.find(a => a.id === id);
+      const name = prompt('Name for this admin (for your cache):', existing ? (existing.name || '') : '');
+      if (name === null) return; // cancelled
+      upsertAdminCacheEntry(id, name.trim());
+      rerenderAll();
+      toast('Saved to admin cache');
+    });
+    row.appendChild(cacheBtn);
+
+    const rm = document.createElement('button');
+    rm.className = 'btn small danger';
+    rm.textContent = '✕';
+    rm.addEventListener('click', ()=>{ arr.splice(idx,1); rerenderAll(); });
+    row.appendChild(rm);
+
+    container.appendChild(row);
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn small add-row';
+  addBtn.textContent = '+ Add';
+  addBtn.addEventListener('click', ()=>{ arr.push(''); rerenderAll(); });
+  container.appendChild(addBtn);
+
+  // Quick-add from cache.
+  const cacheRow = document.createElement('div');
+  cacheRow.className = 'admin-cache-row';
+  const select = document.createElement('select');
+  select.className = 'admin-cache-select';
+  const placeholderOpt = document.createElement('option');
+  placeholderOpt.value = '';
+  placeholderOpt.textContent = adminCache.length ? 'Add from cache…' : 'No cached admins yet';
+  select.appendChild(placeholderOpt);
+  adminCache.forEach(a=>{
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = (a.name ? a.name + ' — ' : '') + a.id;
+    select.appendChild(opt);
+  });
+  const addFromCacheBtn = document.createElement('button');
+  addFromCacheBtn.type = 'button';
+  addFromCacheBtn.className = 'btn small';
+  addFromCacheBtn.textContent = '+ Add Selected';
+  addFromCacheBtn.disabled = adminCache.length === 0;
+  addFromCacheBtn.addEventListener('click', ()=>{
+    const id = select.value;
+    if (!id) return;
+    if (arr.includes(id)){ toast('Already in the admins list'); return; }
+    arr.push(id);
+    rerenderAll();
+  });
+  cacheRow.appendChild(select);
+  cacheRow.appendChild(addFromCacheBtn);
+  container.appendChild(cacheRow);
+
+  const manageSub = makeSubSection('Manage Admin Cache', adminCache.length, false, (path || '') + '/__adminCache');
+  renderAdminCacheManager(manageSub.body);
+  container.appendChild(manageSub.details);
+}
+
+function renderAdminCacheManager(container){
+  container.innerHTML = '';
+
+  // Export / import toolbar.
+  const toolbar = document.createElement('div');
+  toolbar.className = 'admin-cache-toolbar';
+
+  const exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'btn small';
+  exportBtn.textContent = '⬇ Export';
+  exportBtn.title = 'Download the admin cache as a JSON file';
+  exportBtn.disabled = adminCache.length === 0;
+  exportBtn.addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(adminCache, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'admin_cache.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('Exported admin cache');
+  });
+  toolbar.appendChild(exportBtn);
+
+  const importInput = document.createElement('input');
+  importInput.type = 'file';
+  importInput.accept = '.json,application/json';
+  importInput.className = 'admin-cache-import-input';
+  importInput.style.display = 'none';
+  importInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const parsed = JSON.parse(reader.result);
+        if (!Array.isArray(parsed)) throw new Error('Expected a JSON array of admin entries (e.g. what "Export" produces).');
+        let added = 0, updated = 0, skipped = 0;
+        parsed.forEach(entry=>{
+          if (!entry || typeof entry !== 'object'){ skipped++; return; }
+          const id = String(entry.id ?? '').trim();
+          if (!id){ skipped++; return; }
+          const name = String(entry.name ?? '').trim();
+          if (adminCache.find(a => a.id === id)) updated++; else added++;
+          upsertAdminCacheEntry(id, name);
+        });
+        rerenderAll();
+        toast('Imported: ' + added + ' new, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' skipped' : ''));
+      }catch(err){
+        alert("Couldn't import that file: " + (err.message || 'invalid JSON.'));
+      }
+    };
+    reader.readAsText(file);
+    importInput.value = ''; // allow re-importing the same file again later
+  });
+  toolbar.appendChild(importInput);
+
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'btn small';
+  importBtn.textContent = '⬆ Import';
+  importBtn.title = 'Load admins from a JSON file into your cache';
+  importBtn.addEventListener('click', ()=> importInput.click());
+  toolbar.appendChild(importBtn);
+
+  container.appendChild(toolbar);
+
+  // Compact scrollable list — one line per cached admin.
+  const scroll = document.createElement('div');
+  scroll.className = 'admin-cache-scroll';
+  if (adminCache.length === 0){
+    const p = document.createElement('div');
+    p.className = 'empty-msg admin-cache-empty';
+    p.textContent = 'No cached admins yet. Use the 💾 button next to an admin ID above, add one below, or import a file.';
+    scroll.appendChild(p);
+  }
+  adminCache.forEach((entry, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'admin-cache-compact-row';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'admin-cache-compact-name';
+    nameInput.placeholder = 'Name';
+    nameInput.value = entry.name || '';
+    nameInput.addEventListener('input', ()=>{ entry.name = nameInput.value; saveAdminCache(); });
+    row.appendChild(nameInput);
+
+    const idInput = document.createElement('input');
+    idInput.type = 'text';
+    idInput.className = 'admin-cache-compact-id';
+    idInput.placeholder = 'ID';
+    idInput.value = entry.id || '';
+    idInput.addEventListener('input', ()=>{ entry.id = idInput.value; saveAdminCache(); });
+    row.appendChild(idInput);
+
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'btn small danger admin-cache-compact-remove';
+    rm.textContent = '×';
+    rm.title = 'Remove from cache';
+    rm.addEventListener('click', ()=>{ adminCache.splice(idx, 1); saveAdminCache(); rerenderAll(); });
+    row.appendChild(rm);
+
+    scroll.appendChild(row);
+  });
+  container.appendChild(scroll);
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn small add-row';
+  addBtn.textContent = '+ Add Cached Admin';
+  addBtn.addEventListener('click', ()=>{
+    adminCache.push({ id: '', name: '' });
+    saveAdminCache();
+    rerenderAll();
+  });
+  container.appendChild(addBtn);
+}
+
+function emptyLike(sample){
+  if (typeof sample === 'number') return 0;
+  if (typeof sample === 'boolean') return false;
+  return '';
+}
+
+function renderObjectArray(container, arr, key){
+  container.innerHTML = '';
+  const template = arr[0] || { name: '' };
+  arr.forEach((obj, idx)=>{
+    const card = document.createElement('div');
+    card.className = 'obj-array-item';
+    const top = document.createElement('div');
+    top.className = 'top';
+    const rm = document.createElement('button');
+    rm.className = 'btn small danger';
+    rm.textContent = 'Remove';
+    rm.addEventListener('click', ()=>{ arr.splice(idx,1); rerenderAll(); });
+    top.appendChild(rm);
+    card.appendChild(top);
+    if (obj !== null && typeof obj === 'object' && !Array.isArray(obj)){
+      Object.keys(obj).forEach(k=>{
+        const row = makeRow(titleCase(k), primitiveInput(obj[k], (v)=>{ obj[k] = v; }));
+        card.appendChild(row);
+      });
+    } else {
+      // Not a plain object (null, a bare value, or a nested array) — still
+      // editable/removable rather than crashing the whole render.
+      card.appendChild(makeRow('Value', primitiveInput(obj, (v)=>{ arr[idx] = v; })));
+    }
+    container.appendChild(card);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn small add-row';
+  addBtn.textContent = '+ Add ' + titleCase(key.replace(/s$/,''));
+  addBtn.addEventListener('click', ()=>{
+    const fresh = {};
+    Object.keys(template).forEach(k=> fresh[k] = emptyLike(template[k]));
+    arr.push(fresh);
+    rerenderAll();
+  });
+  container.appendChild(addBtn);
+}
+
+// Mod-details overlay: shows one mod's picture/name/author/description/
+// size/tags/dependencies with Add / Add with Dependencies actions.
+// modStub is expected to already be a full normalized stub (from search
+// results or from resolveModStub) — no extra fetch is needed to show its
+// own info, only to resolve its dependencies' names/pictures. `arr` is the
+// mods array to add into; `onArrChanged` is called after any mutation so
+// whichever list view (inline card or the full-list manager) is currently
+// open can refresh itself.
+function openModOverlay(modStub, arr, onArrChanged){
+  const ov = getModOverlay();
+  const body = ov.querySelector('.modal-body');
+  ov.dataset.currentMod = modStub.modId;
+  ov.classList.add('show');
+  body.innerHTML = '';
+
+  const images = modStub.images && modStub.images.length ? modStub.images
+    : (modStub.imageUrl ? [modStub.imageUrl] : []);
+  if (images.length){
+    const gallery = document.createElement('div');
+    gallery.className = 'modal-gallery';
+    images.forEach(src=>{
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      img.loading = 'lazy';
+      gallery.appendChild(img);
+    });
+    body.appendChild(gallery);
+  }
+
+  const h = document.createElement('h3');
+  h.className = 'modal-title';
+  h.textContent = modStub.name || modStub.modId;
+  body.appendChild(h);
+
+  const sizeText = formatBytes(modStub.sizeBytes);
+  const totalSizeText = formatBytes(modStub.totalSizeBytes ?? modStub.recursiveSizeBytes ?? null);
+  const metaParts = [];
+  if (modStub.author) metaParts.push('by ' + modStub.author);
+  metaParts.push('ID: ' + modStub.modId);
+  if (modStub.version) metaParts.push('v' + modStub.version);
+  if (sizeText) metaParts.push(sizeText);
+  if (totalSizeText && totalSizeText !== sizeText) metaParts.push(totalSizeText + ' with dependencies');
+  const metaLine = document.createElement('div');
+  metaLine.className = 'modal-meta';
+  metaLine.textContent = metaParts.join(' · ');
+  body.appendChild(metaLine);
+
+  if (modStub.tags && modStub.tags.length){
+    const tagWrap = document.createElement('div');
+    tagWrap.className = 'modal-tags';
+    modStub.tags.forEach(t=>{
+      const chip = document.createElement('span');
+      chip.className = 'modal-tag';
+      chip.textContent = t;
+      tagWrap.appendChild(chip);
+    });
+    body.appendChild(tagWrap);
+  }
+
+  if (modStub.description){
+    const desc = document.createElement('div');
+    desc.className = 'modal-description';
+    desc.textContent = modStub.description;
+    body.appendChild(desc);
+  }
+
+  // Dependencies — a basic picture/name/id row per dependency, each with
+  // its own Details button that opens that dependency into this same
+  // overlay (so you can walk the dependency chain).
+  const depIds = modStub.dependencyIds || [];
+  const depSection = document.createElement('div');
+  depSection.className = 'modal-deps';
+  const depHeading = document.createElement('div');
+  depHeading.className = 'modal-deps-heading';
+  depHeading.textContent = depIds.length ? ('Dependencies (' + depIds.length + ')') : 'No known dependencies';
+  depSection.appendChild(depHeading);
+  const depListEl = document.createElement('div');
+  depListEl.className = 'modal-deps-list';
+  depSection.appendChild(depListEl);
+  body.appendChild(depSection);
+
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+
+  const isAdded = ()=> arr.some(x => x && typeof x === 'object' && String(x.modId) === modStub.modId);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'btn small';
+  addBtn.textContent = isAdded() ? 'Added' : 'Add';
+  addBtn.disabled = isAdded();
+  addBtn.addEventListener('click', ()=>{
+    arr.push({ modId: modStub.modId, name: modStub.name });
+    toast('Added "' + modStub.name + '"');
+    onArrChanged();
+    closeModOverlay();
+  });
+  actions.appendChild(addBtn);
+
+  let addWithDepsBtn = null;
+  let depStubsPromise = Promise.resolve([]);
+  if (depIds.length){
+    addWithDepsBtn = document.createElement('button');
+    addWithDepsBtn.type = 'button';
+    addWithDepsBtn.className = 'btn small primary';
+    addWithDepsBtn.textContent = 'Add with All Dependencies';
+    addWithDepsBtn.disabled = true; // enabled once the (first-level) dependency list has loaded
+    addWithDepsBtn.addEventListener('click', async ()=>{
+      addWithDepsBtn.disabled = true;
+      const prevText = addWithDepsBtn.textContent;
+      addWithDepsBtn.textContent = 'Resolving…';
+      // Includes nested/transitive dependencies too — a dependency's own
+      // dependencies, and so on — not just this mod's direct list.
+      const fullDeps = await resolveAllDependencies(modStub);
+      let added = 0;
+      if (!isAdded()){ arr.push({ modId: modStub.modId, name: modStub.name }); added++; }
+      fullDeps.forEach(d=>{
+        if (!arr.some(x => x && typeof x === 'object' && String(x.modId) === d.modId)){
+          arr.push({ modId: d.modId, name: d.name });
+          added++;
+        }
+      });
+      toast('Added ' + added + ' mod' + (added === 1 ? '' : 's') + ' (with all dependencies)');
+      addWithDepsBtn.textContent = prevText;
+      onArrChanged();
+      closeModOverlay();
+    });
+    actions.appendChild(addWithDepsBtn);
+
+    const loading = document.createElement('div');
+    loading.className = 'modal-loading';
+    loading.textContent = 'Loading dependency details…';
+    depListEl.appendChild(loading);
+
+    depStubsPromise = Promise.all(depIds.map(id => resolveModStub(id)));
+    depStubsPromise.then(resolvedDeps=>{
+      // If the overlay moved on to a different mod while these requests
+      // were in flight, don't paint stale content over it.
+      if (ov.dataset.currentMod !== modStub.modId) return;
+      depListEl.innerHTML = '';
+      resolvedDeps.forEach(depStub=>{
+        const row = createModLookupRow(depStub, { onDetails: ()=> openModOverlay(depStub, arr, onArrChanged) });
+        depListEl.appendChild(row);
+      });
+      if (addWithDepsBtn) addWithDepsBtn.disabled = false;
+    }).catch(()=>{
+      if (ov.dataset.currentMod !== modStub.modId) return;
+      depListEl.innerHTML = '';
+      const errEl = document.createElement('div');
+      errEl.className = 'modal-error';
+      errEl.textContent = 'Failed to load dependency details.';
+      depListEl.appendChild(errEl);
+    });
+  }
+
+  body.appendChild(actions);
+}
+
+// Live ModiScover search widget — built standalone (not nested inside
+// renderModsSection) so the exact same widget can be embedded both in the
+// inline Mods card and inside the full-list manager overlay.
+function buildModiscoverLookupWidget(arr, onArrChanged){
+  const lookup = document.createElement('div');
+  lookup.className = 'mod-lookup';
+
+  const lookupHeading = document.createElement('div');
+  lookupHeading.className = 'mod-lookup-heading';
+  lookupHeading.textContent = 'Search ModiScover for a mod';
+  lookup.appendChild(lookupHeading);
+
+  const lookupInput = document.createElement('input');
+  lookupInput.className = 'mod-search mod-lookup-input';
+  lookupInput.placeholder = 'Search mods by name…';
+  lookup.appendChild(lookupInput);
+
+  const lookupStatus = document.createElement('div');
+  lookupStatus.className = 'mod-lookup-status';
+  lookup.appendChild(lookupStatus);
+
+  const lookupResults = document.createElement('div');
+  lookupResults.className = 'mod-lookup-results';
+  lookup.appendChild(lookupResults);
+
+  const attribution = document.createElement('div');
+  attribution.className = 'mod-lookup-attribution';
+  attribution.textContent = 'Mod search powered by modiscover.eu';
+  lookup.appendChild(attribution);
+
+  let lookupDebounce = null;
+  let lookupToken = 0;
+
+  function renderLookupResults(results, query){
+    lookupResults.innerHTML = '';
+    if (!results.length){
+      lookupStatus.textContent = 'No mods found for "' + query + '".';
+      return;
+    }
+    lookupStatus.textContent = results.length + ' result' + (results.length === 1 ? '' : 's');
+    results.forEach(m=>{
+      const depCount = m.dependencyIds ? m.dependencyIds.length : 0;
+      const row = createModLookupRow(m, {
+        extraInfoText: depCount ? (depCount + ' dependenc' + (depCount === 1 ? 'y' : 'ies')) : '',
+        onDetails: ()=> openModOverlay(m, arr, onArrChanged),
+        onAdd: (addBtn)=>{
+          arr.push({ modId: m.modId, name: m.name });
+          addBtn.textContent = 'Added';
+          addBtn.disabled = true;
+          toast('Added "' + (m.name || m.modId) + '"');
+          // Refresh whichever list view is showing — deliberately NOT
+          // touching this search input/results, so the user can keep
+          // adding from the same search without it resetting.
+          onArrChanged();
+        },
+        alreadyAdded: arr.some(x => x && typeof x === 'object' && String(x.modId) === m.modId),
+        onAddWithDeps: async (depsBtn)=>{
+          depsBtn.disabled = true;
+          const prevText = depsBtn.textContent;
+          depsBtn.textContent = 'Resolving…';
+          const fullDeps = await resolveAllDependencies(m);
+          let added = 0;
+          if (!arr.some(x => x && typeof x === 'object' && String(x.modId) === m.modId)){
+            arr.push({ modId: m.modId, name: m.name });
+            added++;
+          }
+          fullDeps.forEach(d=>{
+            if (!arr.some(x => x && typeof x === 'object' && String(x.modId) === d.modId)){
+              arr.push({ modId: d.modId, name: d.name });
+              added++;
+            }
+          });
+          toast('Added ' + added + ' mod' + (added === 1 ? '' : 's') + ' (with all dependencies)');
+          depsBtn.textContent = 'Added';
+          onArrChanged();
+        }
+      });
+      lookupResults.appendChild(row);
+    });
+  }
+
+  lookupInput.addEventListener('input', ()=>{
+    const q = lookupInput.value.trim();
+    clearTimeout(lookupDebounce);
+    if (!q){
+      lookupStatus.textContent = '';
+      lookupResults.innerHTML = '';
+      return;
+    }
+    lookupStatus.textContent = 'Searching…';
+    lookupResults.innerHTML = '';
+    const myToken = ++lookupToken;
+    lookupDebounce = setTimeout(async ()=>{
+      try{
+        const results = await searchModiscoverMods(q);
+        if (myToken !== lookupToken) return; // a newer search has since started
+        renderLookupResults(results, q);
+      }catch(err){
+        if (myToken !== lookupToken) return;
+        lookupStatus.textContent = '⚠ ' + (err.message || 'Search failed.');
+        lookupResults.innerHTML = '';
+      }
+    }, 350);
+  });
+
+  return lookup;
+}
+
+// A single compact row for one installed mod: drag handle, jump-to-position
+// field, modId/name/version inputs, and a remove button — all on one line
+// so lists of 100-200 mods stay scannable. `opts.selectable` adds a
+// checkbox for bulk actions (used by the full-list manager overlay).
+function buildCompactModRow(mod, idx, arr, opts){
+  opts = opts || {};
+  const row = document.createElement('div');
+  row.className = 'mod-compact-row';
+  row.draggable = false;
+
+  if (opts.selectable){
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'mod-compact-select';
+    cb.checked = opts.isSelected ? !!opts.isSelected(mod) : false;
+    cb.addEventListener('change', ()=> opts.onToggleSelect && opts.onToggleSelect(mod, cb.checked));
+    row.appendChild(cb);
+  }
+
+  const handle = document.createElement('div');
+  handle.className = 'mod-compact-drag';
+  handle.textContent = '⋮⋮';
+  handle.title = 'Drag to reorder';
+  row.appendChild(handle);
+
+  const posInput = document.createElement('input');
+  posInput.type = 'text';
+  posInput.inputMode = 'numeric';
+  posInput.className = 'mod-compact-pos';
+  posInput.value = String(idx + 1);
+  posInput.title = 'Position — edit and press Enter to jump';
+  posInput.addEventListener('change', ()=>{
+    const n = parseInt(posInput.value, 10);
+    const target = Number.isFinite(n) ? Math.min(Math.max(n, 1), arr.length) - 1 : idx;
+    if (target !== idx){
+      const [item] = arr.splice(idx, 1);
+      arr.splice(target, 0, item);
+      opts.onChange && opts.onChange();
+    } else {
+      posInput.value = String(idx + 1);
+    }
+  });
+  row.appendChild(posInput);
+
+  const isPlainObj = mod !== null && typeof mod === 'object' && !Array.isArray(mod);
+  if (isPlainObj){
+    const idInput = document.createElement('input');
+    idInput.type = 'text';
+    idInput.className = 'mod-compact-id';
+    idInput.placeholder = 'Mod ID';
+    idInput.value = mod.modId ?? '';
+    idInput.addEventListener('input', ()=>{ mod.modId = idInput.value; });
+    row.appendChild(idInput);
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'mod-compact-name';
+    nameInput.placeholder = 'Name';
+    nameInput.value = mod.name ?? '';
+    nameInput.addEventListener('input', ()=>{ mod.name = nameInput.value; });
+    row.appendChild(nameInput);
+
+    const versionInput = document.createElement('input');
+    versionInput.type = 'text';
+    versionInput.className = 'mod-compact-version';
+    versionInput.placeholder = 'Version';
+    versionInput.value = mod.version ?? '';
+    versionInput.addEventListener('input', ()=>{
+      // Empty version isn't real data — omit the key entirely rather than
+      // exporting "version": "".
+      if (versionInput.value === '') delete mod.version;
+      else mod.version = versionInput.value;
+    });
+    row.appendChild(versionInput);
+  } else {
+    const note = document.createElement('div');
+    note.className = 'mod-compact-name mod-compact-note';
+    note.textContent = "Not a normal mod entry — remove it, or fix it via Raw JSON.";
+    row.appendChild(note);
+  }
+
+  const rm = document.createElement('button');
+  rm.type = 'button';
+  rm.className = 'btn small danger mod-compact-remove';
+  rm.textContent = '×';
+  rm.title = 'Remove';
+  rm.addEventListener('click', ()=>{
+    const i = arr.indexOf(mod);
+    if (i !== -1) arr.splice(i, 1);
+    opts.onRemove && opts.onRemove(mod);
+    opts.onChange && opts.onChange();
+  });
+  row.appendChild(rm);
+
+  handle.addEventListener('mousedown', ()=>{ row.draggable = true; });
+  handle.addEventListener('mouseup', ()=>{ row.draggable = false; });
+  handle.addEventListener('touchstart', ()=>{ row.draggable = true; }, { passive: true });
+  row.addEventListener('dragstart', (e)=>{
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+  });
+  row.addEventListener('dragend', ()=>{
+    row.classList.remove('dragging');
+    row.draggable = false;
+  });
+  row.addEventListener('dragover', (e)=>{
+    e.preventDefault();
+    row.classList.add('drag-over');
+  });
+  row.addEventListener('dragleave', ()=> row.classList.remove('drag-over'));
+  row.addEventListener('drop', (e)=>{
+    e.preventDefault();
+    row.classList.remove('drag-over');
+    const fromIdx = Number(e.dataTransfer.getData('text/plain'));
+    if (!Number.isNaN(fromIdx) && fromIdx !== idx){
+      const [item] = arr.splice(fromIdx, 1);
+      arr.splice(idx, 0, item);
+      opts.onChange && opts.onChange();
+    }
+  });
+
+  return row;
+}
+
+// Singleton full-list "Manage Mods" overlay — a bigger, scrollable, more
+// functional editor for long mod lists (filter, bulk select/remove, and
+// the same ModiScover search embedded), distinct from the single-mod
+// details overlay so either can be open (details can stack on top).
+let modListOverlayCloseCallback = null;
+function getModListOverlay(){
+  let ov = document.getElementById('modListOverlay');
+  if (ov) return ov;
+  ov = document.createElement('div');
+  ov.id = 'modListOverlay';
+  ov.className = 'modal-overlay';
+  ov.innerHTML = '<div class="modal modal-wide" role="dialog" aria-modal="true"><button type="button" class="modal-close" aria-label="Close">×</button><div class="modal-body"></div></div>';
+  // Deliberately no click-outside-to-close — only the × button or Escape close this.
+  ov.querySelector('.modal-close').addEventListener('click', closeModListOverlay);
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && ov.classList.contains('show')) closeModListOverlay(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+function closeModListOverlay(){
+  const ov = document.getElementById('modListOverlay');
+  if (ov) ov.classList.remove('show');
+  if (modListOverlayCloseCallback){
+    const cb = modListOverlayCloseCallback;
+    modListOverlayCloseCallback = null;
+    cb();
+  }
+}
+
+// Export / import the whole mod list as its own standalone JSON file —
+// separate from downloading/loading the full server config. Shared between
+// the inline Mods card and the "Manage All" overlay so both offer it.
+// onChanged is called after a successful import so the caller can refresh
+// whatever list/count UI it's showing.
+function buildModIoRow(arr, onChanged){
+  const ioRow = document.createElement('div');
+  ioRow.className = 'mod-list-io';
+
+  const exportModsBtn = document.createElement('button');
+  exportModsBtn.type = 'button';
+  exportModsBtn.className = 'btn small';
+  exportModsBtn.textContent = '⬇ Export Mods';
+  exportModsBtn.title = 'Download the current mod list as a JSON file';
+  exportModsBtn.addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mods.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('Exported ' + arr.length + ' mod' + (arr.length === 1 ? '' : 's'));
+  });
+  ioRow.appendChild(exportModsBtn);
+
+  const importModsInput = document.createElement('input');
+  importModsInput.type = 'file';
+  importModsInput.accept = '.json,application/json';
+  importModsInput.style.display = 'none';
+  importModsInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const parsed = JSON.parse(reader.result);
+        // Accept a bare mod array (what "Export Mods" produces), an object
+        // with a "mods" array, or a full server config file — so you can
+        // import mods straight out of someone else's exported config too.
+        const list = Array.isArray(parsed) ? parsed
+          : Array.isArray(parsed?.mods) ? parsed.mods
+          : Array.isArray(parsed?.game?.mods) ? parsed.game.mods
+          : null;
+        if (!list) throw new Error('Expected a JSON array of mods (or an object containing one) — e.g. what "Export Mods" produces, or a full server config file.');
+        let added = 0, duplicates = 0, skipped = 0;
+        list.forEach(entry=>{
+          if (!entry || typeof entry !== 'object'){ skipped++; return; }
+          const modId = String(entry.modId ?? entry.workshop_id ?? entry.id ?? '').trim();
+          if (!modId){ skipped++; return; }
+          if (arr.some(x => x && typeof x === 'object' && String(x.modId) === modId)){ duplicates++; return; }
+          const fresh = { modId, name: String(entry.name ?? '') };
+          const version = String(entry.version ?? '').trim();
+          if (version) fresh.version = version;
+          arr.push(fresh);
+          added++;
+        });
+        if (onChanged) onChanged();
+        toast('Imported: ' + added + ' added' + (duplicates ? ', ' + duplicates + ' already in list' : '') + (skipped ? ', ' + skipped + ' skipped' : ''));
+      }catch(err){
+        alert("Couldn't import that file: " + (err.message || 'invalid JSON.'));
+      }
+    };
+    reader.readAsText(file);
+    importModsInput.value = ''; // allow re-importing the same file again later
+  });
+  ioRow.appendChild(importModsInput);
+
+  const importModsBtn = document.createElement('button');
+  importModsBtn.type = 'button';
+  importModsBtn.className = 'btn small';
+  importModsBtn.textContent = '⬆ Import Mods';
+  importModsBtn.title = 'Add mods from a JSON file — mods already in the list are skipped';
+  importModsBtn.addEventListener('click', ()=> importModsInput.click());
+  ioRow.appendChild(importModsBtn);
+
+  return ioRow;
+}
+
+function openModListOverlay(arr, onClose){
+  const ov = getModListOverlay();
+  modListOverlayCloseCallback = onClose;
+  ov.classList.add('show');
+  const body = ov.querySelector('.modal-body');
+  body.innerHTML = '';
+
+  const header = document.createElement('h3');
+  header.className = 'modal-title mod-list-header';
+  body.appendChild(header);
+
+  body.appendChild(buildModIoRow(arr, ()=>{ currentVisible = drawList(); updateHeader(); }));
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'mod-list-toolbar';
+
+  const filterInput = document.createElement('input');
+  filterInput.className = 'mod-search';
+  filterInput.placeholder = 'Filter by name or ID…';
+  toolbar.appendChild(filterInput);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'btn small add-row';
+  addBtn.textContent = '+ Add Mod';
+  toolbar.appendChild(addBtn);
+
+  const bulk = document.createElement('div');
+  bulk.className = 'mod-list-bulk';
+  const selectAllCb = document.createElement('input');
+  selectAllCb.type = 'checkbox';
+  selectAllCb.title = 'Select all (visible)';
+  const selectAllLabel = document.createElement('label');
+  selectAllLabel.className = 'mod-list-select-all';
+  selectAllLabel.appendChild(selectAllCb);
+  selectAllLabel.appendChild(document.createTextNode(' Select all'));
+  bulk.appendChild(selectAllLabel);
+  const bulkRemoveBtn = document.createElement('button');
+  bulkRemoveBtn.type = 'button';
+  bulkRemoveBtn.className = 'btn small danger';
+  bulkRemoveBtn.disabled = true;
+  bulk.appendChild(bulkRemoveBtn);
+  const clearAllBtn = document.createElement('button');
+  clearAllBtn.type = 'button';
+  clearAllBtn.className = 'btn small danger';
+  clearAllBtn.textContent = 'Remove All';
+  bulk.appendChild(clearAllBtn);
+  toolbar.appendChild(bulk);
+
+  body.appendChild(toolbar);
+
+  const listScroll = document.createElement('div');
+  listScroll.className = 'mod-list-overlay-body';
+  body.appendChild(listScroll);
+
+  const selected = new Set();
+
+  function updateHeader(){
+    header.textContent = 'Manage Mods (' + arr.length + ')';
+  }
+
+  function updateBulkUI(visibleMods){
+    // "Select all" only ever considers currently-visible (filtered) mods.
+    const visibleSelectedCount = visibleMods.filter(m => selected.has(m)).length;
+    selectAllCb.checked = visibleMods.length > 0 && visibleSelectedCount === visibleMods.length;
+    selectAllCb.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleMods.length;
+    bulkRemoveBtn.textContent = 'Remove Selected (' + selected.size + ')';
+    bulkRemoveBtn.disabled = selected.size === 0;
+    clearAllBtn.disabled = arr.length === 0;
+  }
+
+  function drawList(){
+    listScroll.innerHTML = '';
+    const f = (filterInput.value || '').toLowerCase();
+    const visibleMods = [];
+    arr.forEach((mod, idx)=>{
+      const isPlainObj = mod !== null && typeof mod === 'object' && !Array.isArray(mod);
+      const nm = isPlainObj ? String(mod.name || '') : '';
+      const id = isPlainObj ? String(mod.modId || '') : '';
+      if (f && !(nm.toLowerCase().includes(f) || id.toLowerCase().includes(f))) return;
+      visibleMods.push(mod);
+      const row = buildCompactModRow(mod, idx, arr, {
+        selectable: true,
+        isSelected: m => selected.has(m),
+        onToggleSelect: (m, checked)=>{
+          if (checked) selected.add(m); else selected.delete(m);
+          updateBulkUI(visibleMods);
+        },
+        onRemove: (m)=> selected.delete(m),
+        onChange: ()=>{ drawList(); updateHeader(); }
+      });
+      listScroll.appendChild(row);
+    });
+    if (!visibleMods.length){
+      const empty = document.createElement('div');
+      empty.className = 'empty-msg mod-list-empty';
+      empty.textContent = arr.length ? 'No mods match your filter.' : 'No mods installed yet — add one below, or search ModiScover.';
+      listScroll.appendChild(empty);
+    }
+    updateBulkUI(visibleMods);
+    return visibleMods;
+  }
+
+  let currentVisible = drawList();
+  updateHeader();
+
+  filterInput.addEventListener('input', ()=>{ currentVisible = drawList(); });
+
+  addBtn.addEventListener('click', ()=>{
+    arr.push({ modId: '', name: '' });
+    currentVisible = drawList();
+    updateHeader();
+  });
+
+  selectAllCb.addEventListener('change', ()=>{
+    if (selectAllCb.checked) currentVisible.forEach(m => selected.add(m));
+    else currentVisible.forEach(m => selected.delete(m));
+    currentVisible = drawList();
+  });
+
+  bulkRemoveBtn.addEventListener('click', ()=>{
+    const n = selected.size;
+    for (let i = arr.length - 1; i >= 0; i--){
+      if (selected.has(arr[i])) arr.splice(i, 1);
+    }
+    selected.clear();
+    currentVisible = drawList();
+    updateHeader();
+    toast('Removed ' + n + ' mod' + (n === 1 ? '' : 's'));
+  });
+
+  clearAllBtn.addEventListener('click', ()=>{
+    if (!arr.length) return;
+    if (!confirm('Remove all ' + arr.length + ' mods from the list? This cannot be undone.')) return;
+    const n = arr.length;
+    arr.length = 0;
+    selected.clear();
+    currentVisible = drawList();
+    updateHeader();
+    toast('Removed all ' + n + ' mods');
+  });
+
+  // Dependency review — walks every installed mod's FULL dependency tree
+  // (deps of deps, and so on) via ModiScover and reports anything required
+  // that isn't currently in the list.
+  const depReview = document.createElement('div');
+  depReview.className = 'mod-dep-review';
+  const depReviewHeader = document.createElement('div');
+  depReviewHeader.className = 'mod-dep-review-header';
+  const depReviewTitle = document.createElement('div');
+  depReviewTitle.className = 'mod-dep-review-title';
+  depReviewTitle.textContent = 'Dependency Review';
+  depReviewHeader.appendChild(depReviewTitle);
+  const checkDepsBtn = document.createElement('button');
+  checkDepsBtn.type = 'button';
+  checkDepsBtn.className = 'btn small';
+  checkDepsBtn.textContent = 'Check for Missing Dependencies';
+  depReviewHeader.appendChild(checkDepsBtn);
+  depReview.appendChild(depReviewHeader);
+  const depReviewStatus = document.createElement('div');
+  depReviewStatus.className = 'mod-dep-review-status';
+  depReviewStatus.textContent = 'Checks every installed mod’s full dependency tree (including nested/transitive dependencies) against what’s currently in your list.';
+  depReview.appendChild(depReviewStatus);
+  const depReviewResults = document.createElement('div');
+  depReviewResults.className = 'mod-dep-review-results';
+  depReview.appendChild(depReviewResults);
+  body.appendChild(depReview);
+
+  let reviewToken = 0;
+  checkDepsBtn.addEventListener('click', async ()=>{
+    const myToken = ++reviewToken;
+    checkDepsBtn.disabled = true;
+    depReviewResults.innerHTML = '';
+    const roots = arr.filter(m => m && typeof m === 'object' && m.modId);
+    if (!roots.length){
+      depReviewStatus.textContent = 'No mods installed to check.';
+      checkDepsBtn.disabled = false;
+      return;
+    }
+    depReviewStatus.textContent = 'Checking dependencies… (0/' + roots.length + ')';
+    const installedIds = new Set(roots.map(m => String(m.modId)));
+    const allDeps = new Map();
+    let checked = 0;
+    await mapWithConcurrency(roots, 5, async (root)=>{
+      const rootStub = await resolveModStub(root.modId);
+      const deps = await resolveAllDependencies(rootStub);
+      deps.forEach((stub, id)=> allDeps.set(id, stub));
+      checked++;
+      if (myToken === reviewToken){
+        depReviewStatus.textContent = 'Checking dependencies… (' + checked + '/' + roots.length + ')';
+      }
+    });
+    if (myToken !== reviewToken) return; // a newer check (or overlay close/reopen) superseded this one
+    checkDepsBtn.disabled = false;
+
+    const missing = [...allDeps.values()].filter(d => !installedIds.has(String(d.modId)));
+    if (!missing.length){
+      depReviewStatus.textContent = '✓ All dependencies for your ' + roots.length + ' installed mod' + (roots.length === 1 ? '' : 's') + ' are satisfied — nothing missing.';
+      return;
+    }
+    depReviewStatus.textContent = '⚠ ' + missing.length + ' missing dependenc' + (missing.length === 1 ? 'y' : 'ies') + ' required by mods already in your list:';
+
+    const addAllBtn = document.createElement('button');
+    addAllBtn.type = 'button';
+    addAllBtn.className = 'btn small primary';
+    addAllBtn.textContent = 'Add All Missing (' + missing.length + ')';
+    addAllBtn.addEventListener('click', ()=>{
+      let added = 0;
+      missing.forEach(d=>{
+        if (!arr.some(x => x && typeof x === 'object' && String(x.modId) === d.modId)){
+          arr.push({ modId: d.modId, name: d.name });
+          added++;
+        }
+      });
+      toast('Added ' + added + ' missing dependenc' + (added === 1 ? 'y' : 'ies'));
+      currentVisible = drawList();
+      updateHeader();
+      depReviewResults.innerHTML = '';
+      depReviewStatus.textContent = 'Added all missing dependencies.';
+    });
+    depReviewResults.appendChild(addAllBtn);
+
+    const rowsWrap = document.createElement('div');
+    rowsWrap.className = 'mod-dep-review-rows';
+    missing.forEach(d=>{
+      const row = createModLookupRow(d, {
+        onDetails: ()=> openModOverlay(d, arr, ()=>{ currentVisible = drawList(); updateHeader(); }),
+        onAdd: (btn)=>{
+          arr.push({ modId: d.modId, name: d.name });
+          btn.textContent = 'Added';
+          btn.disabled = true;
+          toast('Added "' + (d.name || d.modId) + '"');
+          currentVisible = drawList();
+          updateHeader();
+        }
+      });
+      rowsWrap.appendChild(row);
+    });
+    depReviewResults.appendChild(rowsWrap);
+  });
+
+  body.appendChild(buildModiscoverLookupWidget(arr, ()=>{ currentVisible = drawList(); updateHeader(); }));
+}
+
+// Special mod-list renderer: compact, scrollable installed-mods list with a
+// filter, a link to the full-list manager overlay for bulk operations on
+// long lists, and the ModiScover search widget for finding new mods.
+function renderModsSection(container, arr){
+  container.innerHTML = '';
+
+  const count = document.createElement('div');
+  count.className = 'mod-count';
+  container.appendChild(count);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'mod-toolbar';
+  const search = document.createElement('input');
+  search.className = 'mod-search';
+  search.placeholder = 'Filter installed mods by name or ID…';
+  toolbar.appendChild(search);
+  const manageBtn = document.createElement('button');
+  manageBtn.type = 'button';
+  manageBtn.className = 'btn small';
+  manageBtn.textContent = '⛶ Manage All';
+  manageBtn.title = 'Open the full mod list manager (filter, bulk select, reorder)';
+  manageBtn.addEventListener('click', ()=> openModListOverlay(arr, refreshModsList));
+  toolbar.appendChild(manageBtn);
+  container.appendChild(toolbar);
+
+  container.appendChild(buildModIoRow(arr, ()=> refreshModsList()));
+
+  const listScroll = document.createElement('div');
+  listScroll.className = 'mod-list-scroll';
+  container.appendChild(listScroll);
+
+  // Refreshes just the installed-mods list (count, card badge, and the
+  // list itself) without a full-page rerenderAll() — so anything else on
+  // the page (like an in-progress ModiScover search and its results)
+  // isn't wiped out by an unrelated mod add/remove/reorder.
+  function refreshModsList(){
+    count.textContent = arr.length + ' mods installed';
+    const cardEl = container.closest('details.card');
+    const badgeEl = cardEl && cardEl.querySelector(':scope > summary .badge');
+    if (badgeEl) badgeEl.textContent = arr.length + ' total';
+    draw(search.value);
+  }
+
+  function draw(filter){
+    listScroll.innerHTML = '';
+    const f = (filter || '').toLowerCase();
+    let shown = 0;
+    arr.forEach((mod, idx)=>{
+      const isPlainObj = mod !== null && typeof mod === 'object' && !Array.isArray(mod);
+      const nm = isPlainObj ? String(mod.name || '') : '';
+      const id = isPlainObj ? String(mod.modId || '') : '';
+      if (f && !(nm.toLowerCase().includes(f) || id.toLowerCase().includes(f))) return;
+      shown++;
+      listScroll.appendChild(buildCompactModRow(mod, idx, arr, { onChange: refreshModsList }));
+    });
+    if (!shown){
+      const empty = document.createElement('div');
+      empty.className = 'empty-msg mod-list-empty';
+      empty.textContent = arr.length ? 'No mods match your filter.' : 'No mods installed yet.';
+      listScroll.appendChild(empty);
+    }
+  }
+
+  search.addEventListener('input', ()=> draw(search.value));
+  refreshModsList();
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn small add-row';
+  addBtn.textContent = '+ Add Mod';
+  addBtn.addEventListener('click', ()=>{
+    arr.push({ modId: '', name: '' });
+    refreshModsList();
+  });
+  container.appendChild(addBtn);
+
+  container.appendChild(buildModiscoverLookupWidget(arr, refreshModsList));
+}
+
+// A collapsible sub-section (used for nested objects, and for any array —
+// including lists like "admins" — so each gets its own titled, collapsible
+// block instead of being dumped inline).
+function makeSubSection(title, badge, openByDefault, path){
+  const d = document.createElement('details');
+  d.className = 'sub';
+  if (path) d.dataset.key = path;
+  if (openByDefault) d.open = true;
+  const s = document.createElement('summary');
+  s.className = 'subhead';
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  chev.textContent = '▶';
+  s.appendChild(chev);
+  s.appendChild(document.createTextNode(title + (badge !== undefined ? ' (' + badge + ')' : '')));
+  d.appendChild(s);
+  const body = document.createElement('div');
+  body.className = 'sub-body';
+  d.appendChild(body);
+  return { details: d, body };
+}
+
+// Display-only reshaping: these child keys render as their own sibling
+// section right after their parent, instead of nested inside it — WITHOUT
+// moving anything in the real data. The real schema (what gets exported)
+// stays exactly as the server expects it (e.g. gameProperties.missionHeader
+// stays nested); we just reach into the same object reference to render it
+// in a friendlier spot, so edits still write straight back to that real path.
+const HOIST_CHILDREN = { gameProperties: ['missionHeader'] };
+
+// Individual values render first; nested objects/arrays (each their own
+// collapsible section) follow. `excludeKeys` skips specific keys of `obj`
+// entirely for this call (used when a key is being rendered elsewhere,
+// e.g. hoisted out as a sibling, or handled by a dedicated card like Mods).
+// `path` is a stable identifier for this object's position in the data
+// (e.g. "card-game/gameProperties") — threaded into every sub-section so
+// rerenderAll() can remember and restore which ones were open/closed,
+// instead of every section snapping shut on every full re-render.
+function renderObject(container, obj, excludeKeys, path){
+  excludeKeys = excludeKeys || new Set();
+  path = path || '';
+  const allKeys = Object.keys(obj);
+  const keys = allKeys.filter(k => !excludeKeys.has(k));
+  const primitiveKeys = keys.filter(k => obj[k] === null || typeof obj[k] !== 'object');
+  const nestedKeys = keys.filter(k => obj[k] !== null && typeof obj[k] === 'object');
+
+  primitiveKeys.forEach(key=>{
+    const row = makeRow(titleCase(key), primitiveInput(obj[key], (v)=>{ obj[key] = v; }));
+    container.appendChild(row);
+  });
+
+  nestedKeys.forEach(key=>{
+    const val = obj[key];
+    const childPath = path + '/' + key;
+    if (Array.isArray(val)){
+      const sub = makeSubSection(titleCase(key), val.length, false, childPath);
+      if (key === 'admins' && (val.length === 0 || typeof val[0] !== 'object')){
+        renderAdminsSection(sub.body, val, childPath);
+      } else if (val.length === 0 || typeof val[0] !== 'object'){
+        renderPrimitiveArray(sub.body, val, key);
+      } else {
+        renderObjectArray(sub.body, val, key);
+      }
+      container.appendChild(sub.details);
+    } else {
+      const hoistKeys = HOIST_CHILDREN[key] || [];
+      const sub = makeSubSection(titleCase(key), undefined, true, childPath);
+      renderObject(sub.body, val, new Set(hoistKeys), childPath);
+      container.appendChild(sub.details);
+
+      // Render each hoisted child as its own sibling section right after,
+      // reading/writing the same real nested object (val[hk]) directly.
+      hoistKeys.forEach(hk=>{
+        const childVal = val[hk];
+        if (childVal === undefined || childVal === null || typeof childVal !== 'object') return;
+        const hoistPath = childPath + '/' + hk;
+        const hoistSub = makeSubSection(titleCase(hk), Array.isArray(childVal) ? childVal.length : undefined, true, hoistPath);
+        if (Array.isArray(childVal)){
+          if (childVal.length === 0 || typeof childVal[0] !== 'object') renderPrimitiveArray(hoistSub.body, childVal, hk);
+          else renderObjectArray(hoistSub.body, childVal, hk);
+        } else {
+          renderObject(hoistSub.body, childVal, undefined, hoistPath);
+        }
+        container.appendChild(hoistSub.details);
+      });
+    }
+  });
+
+  if (keys.length === 0){
+    const p = document.createElement('div');
+    p.className = 'empty-msg';
+    p.textContent = 'Nothing here.';
+    container.appendChild(p);
+  }
+}
+
+function makeCard(title, openByDefault, badge){
+  const d = document.createElement('details');
+  d.className = 'card';
+  if (openByDefault) d.open = true;
+  const s = document.createElement('summary');
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  chev.textContent = '▶';
+  s.appendChild(chev);
+  const t = document.createElement('span');
+  t.textContent = title;
+  s.appendChild(t);
+  if (badge !== undefined){
+    const b = document.createElement('span');
+    b.className = 'badge';
+    b.textContent = badge;
+    s.appendChild(b);
+  }
+  d.appendChild(s);
+  const body = document.createElement('div');
+  body.className = 'card-body';
+  d.appendChild(body);
+  return { card: d, body };
+}
+
+function tierLabel(n, text){
+  const d = document.createElement('div');
+  d.className = 'tier-label';
+  const badge = document.createElement('span');
+  badge.className = 'n';
+  badge.textContent = n;
+  d.appendChild(badge);
+  d.appendChild(document.createTextNode(text));
+  return d;
+}
+
+// Top-level primitive keys (like publicAddress) must bind straight to
+// `data`, not to a copied object, so edits actually persist.
+function renderObjectBoundToRoot(container, keys){
+  keys.forEach(key=>{
+    if (!(key in data)) return;
+    const row = makeRow(titleCase(key), primitiveInput(data[key], (v)=>{ data[key] = v; }));
+    container.appendChild(row);
+  });
+}
+
+// Display-only: shows operating.joinQueue.maxSize as a flat "Join Queue Max
+// Size" value. Reads/writes the real nested operating.joinQueue.maxSize
+// path directly via a getter/setter, so the real schema is never altered —
+// only how it's presented. Any other keys inside joinQueue (if present) get
+// their own small section so nothing is silently hidden.
+function renderOperatingSection(container, operating, path){
+  path = path || 'card-operating';
+  if (!operating.joinQueue || typeof operating.joinQueue !== 'object'){
+    operating.joinQueue = {};
+  }
+  const view = {};
+  Object.keys(operating).forEach(k=>{ if (k !== 'joinQueue') view[k] = operating[k]; });
+  Object.defineProperty(view, 'joinQueueMaxSize', {
+    enumerable: true,
+    get(){ return operating.joinQueue.maxSize; },
+    set(v){ operating.joinQueue.maxSize = v; },
+  });
+  renderObject(container, view, undefined, path);
+
+  const extraKeys = Object.keys(operating.joinQueue).filter(k => k !== 'maxSize');
+  if (extraKeys.length){
+    const subPath = path + '/joinQueue';
+    const sub = makeSubSection('Join Queue (other settings)', extraKeys.length, false, subPath);
+    renderObject(sub.body, operating.joinQueue, new Set(['maxSize']), subPath);
+    container.appendChild(sub.details);
+  }
+}
+
+function buildSidebar(sections){
+  const nav = document.getElementById('sidebar');
+  nav.innerHTML = '';
+  let lastTier = null;
+  sections.forEach(sec=>{
+    if (sec.tier !== lastTier){
+      const h = document.createElement('div');
+      h.className = 'nav-tier';
+      h.textContent = sec.tier;
+      nav.appendChild(h);
+      lastTier = sec.tier;
+    }
+    const a = document.createElement('a');
+    a.href = '#' + sec.id;
+    a.textContent = sec.label;
+    a.addEventListener('click', (e)=>{
+      e.preventDefault();
+      const target = document.getElementById(sec.id);
+      if (!target) return;
+      target.open = true;
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      nav.querySelectorAll('a').forEach(x=> x.classList.remove('active'));
+      a.classList.add('active');
+    });
+    nav.appendChild(a);
+  });
+}
+
+function rerenderAll(){
+  // Preserve every collapsible section's open/closed state across the full
+  // rebuild below — otherwise clicking "+ Add" (or any remove button)
+  // anywhere on the page snaps every section back to its default, since
+  // the whole DOM gets torn down and recreated from scratch each time.
+  const openState = new Map();
+  root.querySelectorAll('details[id]').forEach(d => openState.set(d.id, d.open));
+  root.querySelectorAll('details[data-key]').forEach(d => openState.set(d.dataset.key, d.open));
+
+  root.innerHTML = '';
+  const sidebarSections = [];
+  function addRootCard(cardObj, id, tier, label){
+    cardObj.card.id = id;
+    root.appendChild(cardObj.card);
+    sidebarSections.push({ id, tier, label });
+  }
+
+  root.appendChild(tierLabel(1, 'Game Settings'));
+  const game = data.game || (data.game = {});
+  const gs = makeCard('Game', true);
+  renderObject(gs.body, game, new Set(['mods']), 'card-game');
+  addRootCard(gs, 'card-game', 'Game Settings', 'Game');
+
+  root.appendChild(tierLabel(2, 'Mods'));
+  const modsArr = game.mods || (game.mods = []);
+  const ms = makeCard('Installed Mods', true, modsArr.length + ' total');
+  renderModsSection(ms.body, modsArr);
+  addRootCard(ms, 'card-mods', 'Mods', 'Installed Mods');
+
+  root.appendChild(tierLabel(3, 'Everything Else'));
+  const NETWORK_KEYS = ['publicAddress','publicPort','bindAddress','bindPort'];
+  const hasNet = NETWORK_KEYS.some(k=> k in data);
+  if (hasNet){
+    const c = makeCard('Network', false);
+    renderObjectBoundToRoot(c.body, NETWORK_KEYS);
+    addRootCard(c, 'card-network', 'Everything Else', 'Network');
+  }
+  const skip = new Set(['game', ...NETWORK_KEYS]);
+  Object.keys(data).forEach(key=>{
+    if (skip.has(key)) return;
+    const val = data[key];
+    const id = 'card-' + key.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+    const c = makeCard(titleCase(key), false);
+    if (key === 'operating' && val !== null && typeof val === 'object' && !Array.isArray(val)){
+      renderOperatingSection(c.body, val, id);
+    } else if (val !== null && typeof val === 'object' && !Array.isArray(val)){
+      renderObject(c.body, val, undefined, id);
+    } else if (Array.isArray(val)){
+      if (val.length === 0 || typeof val[0] !== 'object') renderPrimitiveArray(c.body, val, key);
+      else renderObjectArray(c.body, val, key);
+    } else {
+      c.body.appendChild(makeRow(titleCase(key), primitiveInput(val, (v)=>{ data[key] = v; })));
+    }
+    addRootCard(c, id, 'Everything Else', titleCase(key));
+  });
+
+  buildSidebar(sidebarSections);
+
+  // Restore whatever was open/closed before this rebuild.
+  root.querySelectorAll('details[id]').forEach(d => { if (openState.has(d.id)) d.open = openState.get(d.id); });
+  root.querySelectorAll('details[data-key]').forEach(d => { if (openState.has(d.dataset.key)) d.open = openState.get(d.dataset.key); });
+
+  // Structural changes (add/remove/reorder, a full JSON load) always save
+  // immediately; keystroke-level primitive edits are covered separately by
+  // a debounced listener so we're not writing to localStorage on every key.
+  saveDataCache();
+};
+
+/* ---- JSON error highlighting ---- */
+const rawWrap = document.getElementById('rawWrap');
+const rawArea = document.getElementById('rawArea');
+const jsonErrorEl = document.getElementById('jsonError');
+
+function posToLineCol(text, pos){
+  const upto = text.slice(0, pos);
+  const lines = upto.split('\n');
+  return { line: lines.length, col: lines[lines.length - 1].length + 1 };
+}
+function lineColToPos(text, line, col){
+  const lines = text.split('\n');
+  let pos = 0;
+  for (let i = 0; i < line - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+  return pos + (col - 1);
+}
+// Different browsers report JSON.parse errors differently — Firefox/Safari
+// give "line N column M" directly, Chrome/V8 gives a raw string "position N".
+// Normalize both into {line, col, pos} so we can point at the same spot.
+function locateJsonError(text, message){
+  message = message || '';
+  let m = message.match(/line (\d+) column (\d+)/i);
+  if (m){
+    const line = Number(m[1]), col = Number(m[2]);
+    return { line, col, pos: lineColToPos(text, line, col) };
+  }
+  m = message.match(/position (\d+)/i);
+  if (m){
+    const pos = Number(m[1]);
+    return { pos, ...posToLineCol(text, pos) };
+  }
+  return null;
+}
+
+// Shows the parse error inline, opens the Raw JSON box with the offending
+// text so it's actually visible, and selects + scrolls to the exact spot
+// (rather than just an alert() with no way to find the problem).
+function showJsonError(err, text){
+  const message = (err && err.message) ? err.message : String(err);
+  rawWrap.classList.add('show');
+  if (rawArea.value !== text) rawArea.value = text;
+  rawArea.classList.add('has-error');
+  // Guarantee SOME visible error first, no matter what. Everything below
+  // (finding the exact line/column and selecting it) is best-effort polish —
+  // if it throws for any reason, the plain message above must still stand,
+  // rather than the whole thing silently doing nothing.
+  jsonErrorEl.textContent = 'JSON error: ' + message;
+  jsonErrorEl.style.display = 'block';
+  try{
+    const loc = locateJsonError(text, message);
+    if (loc){
+      jsonErrorEl.textContent = 'JSON error at line ' + loc.line + ', column ' + loc.col + ': ' + message;
+      const start = Math.max(0, Math.min(loc.pos, text.length));
+      const end = Math.min(text.length, start + 1);
+      rawArea.focus();
+      rawArea.setSelectionRange(start, end);
+      const lineHeight = parseFloat(getComputedStyle(rawArea).lineHeight) || 18;
+      rawArea.scrollTop = Math.max(0, (loc.line - 1) * lineHeight - rawArea.clientHeight / 2);
+    }
+  }catch(_locateErr){
+    // Position-finding failed — the plain message set above is already shown.
+  }
+}
+function clearJsonError(){
+  jsonErrorEl.style.display = 'none';
+  rawArea.classList.remove('has-error');
+}
+rawArea.addEventListener('input', clearJsonError);
+
+/* ---- toolbar wiring ---- */
+document.getElementById('loadBtn').addEventListener('click', ()=> document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      data = stripEmptyModVersions(JSON.parse(reader.result));
+      closeModOverlay();
+      closeModListOverlay();
+      clearJsonError();
+      stopTrackingActiveConfig();
+      rerenderAll();
+      toast('Loaded ' + file.name);
+    }catch(err){
+      showJsonError(err, reader.result);
+    }
+  };
+  reader.readAsText(file);
+});
+
+const dropZone = document.getElementById('dropZone');
+['dragenter','dragover'].forEach(evt=> dropZone.addEventListener(evt, (e)=>{ e.preventDefault(); dropZone.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt=> dropZone.addEventListener(evt, (e)=>{ e.preventDefault(); dropZone.classList.remove('drag'); }));
+dropZone.addEventListener('drop', (e)=>{
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      data = stripEmptyModVersions(JSON.parse(reader.result));
+      closeModOverlay();
+      closeModListOverlay();
+      clearJsonError();
+      stopTrackingActiveConfig();
+      rerenderAll();
+      toast('Loaded ' + file.name);
+    }catch(err){
+      showJsonError(err, reader.result);
+    }
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('downloadBtn').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(data, null, 4)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (data.game && data.game.name ? data.game.name.replace(/[^a-z0-9]+/gi,'_').slice(0,40) : 'server_config') + '.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('Downloaded');
+});
+
+document.getElementById('rawBtn').addEventListener('click', ()=>{
+  const showing = rawWrap.classList.contains('show');
+  rawWrap.classList.toggle('show', !showing);
+  if (!showing) rawArea.value = JSON.stringify(data, null, 4);
+});
+document.getElementById('rawCloseBtn').addEventListener('click', ()=> rawWrap.classList.remove('show'));
+document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && rawWrap.classList.contains('show')) rawWrap.classList.remove('show'); });
+document.getElementById('syncRaw').addEventListener('click', ()=>{
+  rawArea.value = JSON.stringify(data, null, 4);
+  clearJsonError();
+});
+document.getElementById('applyRaw').addEventListener('click', ()=>{
+  try{
+    data = stripEmptyModVersions(JSON.parse(rawArea.value));
+    closeModOverlay();
+    closeModListOverlay();
+    clearJsonError();
+    rerenderAll();
+    toast('Applied pasted JSON');
+  }catch(err){
+    showJsonError(err, rawArea.value);
+  }
+});
+
+document.getElementById('resetJson').addEventListener('click', ()=>{
+  if (!confirm('Reset to the default sample config? This replaces everything currently loaded and cannot be undone.')) return;
+  data = freshDefaultConfig();
+  closeModOverlay();
+  closeModListOverlay();
+  clearJsonError();
+  stopTrackingActiveConfig();
+  if (rawWrap.classList.contains('show')) rawArea.value = JSON.stringify(data, null, 4);
+  rerenderAll();
+  toast('Reset to the default config');
+});
+
+/* ---- Saved Configs (named save slots) ---- */
+const savedConfigsWrap = document.getElementById('savedConfigsWrap');
+const savedConfigsList = document.getElementById('savedConfigsList');
+
+function formatSavedAt(iso){
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+function renderSavedConfigsPanel(){
+  savedConfigsList.innerHTML = '';
+  if (!savedConfigs.length){
+    const empty = document.createElement('div');
+    empty.className = 'saved-config-empty';
+    empty.textContent = 'No saved configs yet. Click "Save Current As…" to create one.';
+    savedConfigsList.appendChild(empty);
+    return;
+  }
+  // Newest first.
+  const ordered = savedConfigs.map((entry, idx)=> ({ entry, idx })).sort((a, b)=> (b.entry.savedAt || '').localeCompare(a.entry.savedAt || ''));
+  ordered.forEach(({ entry, idx })=>{
+    const row = document.createElement('div');
+    row.className = 'saved-config-row';
+
+    const info = document.createElement('div');
+    info.className = 'saved-config-info';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'saved-config-name';
+    nameEl.textContent = entry.name;
+    const metaEl = document.createElement('div');
+    metaEl.className = 'saved-config-meta';
+    metaEl.textContent = formatSavedAt(entry.savedAt);
+    info.appendChild(nameEl);
+    info.appendChild(metaEl);
+    row.appendChild(info);
+
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'btn small';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', ()=>{
+      if (!confirm('Load "' + entry.name + '"? This replaces your current working config (which stays auto-saved separately, so nothing is lost).')) return;
+      try{
+        data = stripEmptyModVersions(JSON.parse(JSON.stringify(entry.data)));
+        closeModOverlay();
+        closeModListOverlay();
+        clearJsonError();
+        if (rawWrap.classList.contains('show')) rawArea.value = JSON.stringify(data, null, 4);
+        rerenderAll();
+        startTrackingActiveConfig(entry.name);
+        toast('Loaded "' + entry.name + '"');
+      }catch(err){
+        alert("Couldn't load that saved config: " + (err.message || 'unknown error'));
+      }
+    });
+    row.appendChild(loadBtn);
+
+    const overwriteBtn = document.createElement('button');
+    overwriteBtn.type = 'button';
+    overwriteBtn.className = 'btn small';
+    overwriteBtn.textContent = 'Overwrite';
+    overwriteBtn.title = 'Replace this save with your current working config';
+    overwriteBtn.addEventListener('click', ()=>{
+      if (!confirm('Overwrite "' + entry.name + '" with your current working config? This cannot be undone.')) return;
+      const previous = savedConfigs[idx];
+      savedConfigs[idx] = { name: entry.name, savedAt: new Date().toISOString(), data: JSON.parse(JSON.stringify(data)) };
+      if (!persistSavedConfigs()){
+        savedConfigs[idx] = previous; // roll back — the overwrite didn't actually stick
+        alert("Couldn't overwrite — a storage error occurred.");
+        return;
+      }
+      renderSavedConfigsPanel();
+      startTrackingActiveConfig(entry.name);
+      toast('Overwrote "' + entry.name + '"');
+    });
+    row.appendChild(overwriteBtn);
+
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'btn small danger';
+    rm.textContent = 'Delete';
+    rm.addEventListener('click', ()=>{
+      if (!confirm('Delete the saved config "' + entry.name + '"? This cannot be undone.')) return;
+      const [removed] = savedConfigs.splice(idx, 1);
+      if (!persistSavedConfigs()){
+        savedConfigs.splice(idx, 0, removed); // roll back — the delete didn't actually stick
+        alert("Couldn't delete — a storage error occurred.");
+        return;
+      }
+      if (activeConfigName === entry.name) stopTrackingActiveConfig();
+      renderSavedConfigsPanel();
+      toast('Deleted "' + entry.name + '"');
+    });
+    row.appendChild(rm);
+
+    savedConfigsList.appendChild(row);
+  });
+}
+
+/* ---- Active config bar (tracks the loaded Saved Configs slot + dirty state) ---- */
+const activeConfigBar = document.getElementById('activeConfigBar');
+const activeConfigDot = document.getElementById('activeConfigDot');
+const activeConfigNameEl = document.getElementById('activeConfigNameEl');
+const activeConfigStatusEl = document.getElementById('activeConfigStatusEl');
+const saveActiveConfigBtn = document.getElementById('saveActiveConfigBtn');
+
+// The bar sticks right under the header — but the header's own height isn't
+// fixed (its .sub line wraps at narrow widths), so pin the bar's sticky
+// offset to the header's actual measured height rather than a hardcoded
+// number, and keep it in sync as the window resizes / text reflows.
+const mainHeader = document.getElementById('mainHeader');
+function syncActiveConfigBarOffset(){
+  activeConfigBar.style.top = mainHeader.offsetHeight + 'px';
+}
+syncActiveConfigBarOffset();
+window.addEventListener('resize', syncActiveConfigBarOffset);
+if (typeof ResizeObserver === 'function'){
+  new ResizeObserver(syncActiveConfigBarOffset).observe(mainHeader);
+}
+
+function startTrackingActiveConfig(name){
+  activeConfigName = name;
+  activeConfigSnapshot = JSON.stringify(data);
+  updateActiveConfigBar();
+}
+function stopTrackingActiveConfig(){
+  activeConfigName = null;
+  activeConfigSnapshot = null;
+  updateActiveConfigBar();
+}
+function updateActiveConfigBar(){
+  if (!activeConfigName){
+    activeConfigBar.classList.remove('show');
+    return;
+  }
+  // The tracked slot may have been deleted (or renamed away) elsewhere.
+  if (!savedConfigs.some(e => e.name === activeConfigName)){
+    stopTrackingActiveConfig();
+    return;
+  }
+  const dirty = JSON.stringify(data) !== activeConfigSnapshot;
+  activeConfigBar.classList.add('show');
+  activeConfigDot.classList.toggle('dirty', dirty);
+  activeConfigNameEl.textContent = activeConfigName;
+  activeConfigStatusEl.textContent = dirty ? 'unsaved changes' : 'saved';
+  activeConfigStatusEl.classList.toggle('dirty-label', dirty);
+  saveActiveConfigBtn.disabled = !dirty;
+  saveActiveConfigBtn.style.opacity = dirty ? '1' : '.55';
+  saveActiveConfigBtn.style.cursor = dirty ? 'pointer' : 'default';
+}
+saveActiveConfigBtn.addEventListener('click', ()=>{
+  if (!activeConfigName) return;
+  const idx = savedConfigs.findIndex(e => e.name === activeConfigName);
+  if (idx === -1){ stopTrackingActiveConfig(); return; }
+  const previous = savedConfigs[idx];
+  savedConfigs[idx] = { name: activeConfigName, savedAt: new Date().toISOString(), data: JSON.parse(JSON.stringify(data)) };
+  if (!persistSavedConfigs()){
+    savedConfigs[idx] = previous; // roll back — the save didn't actually stick
+    alert("Couldn't save — a storage error occurred.");
+    return;
+  }
+  activeConfigSnapshot = JSON.stringify(data);
+  updateActiveConfigBar();
+  if (savedConfigsWrap.classList.contains('show')) renderSavedConfigsPanel();
+  toast('Saved "' + activeConfigName + '"');
+});
+const stopTrackingConfigBtn = document.getElementById('stopTrackingConfigBtn');
+stopTrackingConfigBtn.addEventListener('click', ()=> stopTrackingActiveConfig());
+
+document.getElementById('savedConfigsBtn').addEventListener('click', ()=>{
+  const showing = savedConfigsWrap.classList.contains('show');
+  savedConfigsWrap.classList.toggle('show', !showing);
+  if (!showing) renderSavedConfigsPanel();
+});
+document.getElementById('savedConfigsCloseBtn').addEventListener('click', ()=> savedConfigsWrap.classList.remove('show'));
+document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && savedConfigsWrap.classList.contains('show')) savedConfigsWrap.classList.remove('show'); });
+
+document.getElementById('saveConfigAsBtn').addEventListener('click', ()=>{
+  const suggested = (data.game && data.game.name ? data.game.name : 'My Config') + ' — ' + new Date().toLocaleString();
+  const name = prompt('Name this save:', suggested);
+  if (name === null) return; // cancelled
+  const trimmed = name.trim();
+  if (!trimmed){ toast('Save name cannot be empty'); return; }
+
+  const snapshot = { name: trimmed, savedAt: new Date().toISOString(), data: JSON.parse(JSON.stringify(data)) };
+  const existingIdx = savedConfigs.findIndex(e => e.name === trimmed);
+  let rollback;
+  if (existingIdx !== -1){
+    if (!confirm('A save named "' + trimmed + '" already exists. Overwrite it?')) return;
+    const previous = savedConfigs[existingIdx];
+    savedConfigs[existingIdx] = snapshot;
+    rollback = ()=>{ savedConfigs[existingIdx] = previous; };
+  } else {
+    savedConfigs.push(snapshot);
+    rollback = ()=>{ savedConfigs.pop(); };
+  }
+
+  if (!persistSavedConfigs()){
+    rollback();
+    alert("Couldn't save — your browser's storage might be full. Try deleting an older saved config first.");
+    return;
+  }
+  renderSavedConfigsPanel();
+  startTrackingActiveConfig(trimmed);
+  toast('Saved "' + trimmed + '"');
+});
+
+// Auto-save the whole working config to localStorage on any edit, anywhere
+// on the page — including the mod-details and Manage Mods overlays, which
+// live outside #root. Debounced so rapid activity doesn't hit storage
+// repeatedly. Several mutations (Add Mod, Remove, bulk actions, drag
+// reordering) intentionally skip the full rerenderAll() rebuild for
+// performance/UX reasons, so this listens broadly — input/change for typed
+// edits, click for every button (including ones that don't otherwise
+// rerender), and drop for drag-and-drop mod reordering — rather than
+// relying only on rerenderAll()'s own save. An extra harmless save
+// occasionally fires from a non-mutating click; that's fine, it's cheap
+// and debounced.
+document.addEventListener('input', scheduleDataSave);
+document.addEventListener('change', scheduleDataSave);
+document.addEventListener('click', scheduleDataSave);
+document.addEventListener('drop', scheduleDataSave);
+
+rerenderAll();
+if (restoredFromCache) toast('Restored your last session');
+</script>
+</body>
+</html>
