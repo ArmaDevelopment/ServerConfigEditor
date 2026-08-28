@@ -136,6 +136,14 @@
     display:flex; gap:8px; align-items:center; padding:5px 0;
   }
   .array-item input{flex:1;}
+  .admin-row-wrap{padding:5px 0;}
+  .admin-row-wrap .array-item{padding:0;}
+  .admin-name-display{
+    margin-top:3px; font-size:11px; color:var(--muted);
+    background:var(--panel2); border:1px solid var(--border); border-radius:6px;
+    padding:3px 8px; display:inline-block; max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   .obj-array-item{
     border:1px solid var(--border); border-radius:9px; padding:8px 10px; margin:8px 0; background:var(--panel);
   }
@@ -592,6 +600,13 @@ function upsertAdminCacheEntry(id, name){
 }
 let adminCache = loadAdminCache();
 
+// Sync callbacks registered by renderAdminsSection — one per admin-list row
+// — so an edit made in the admin cache manager (renamed/re-IDed entry) can
+// refresh the matching name display in the admins list live, without a
+// full rerenderAll() that would blow away whatever's mid-edit there.
+// Reset at the top of every renderAdminsSection call.
+let adminNameDisplaySyncers = [];
+
 // ModiScover mod lookup — https://modiscover.eu/api-docs#mods
 const MODISCOVER_API_BASE = 'https://modiscover.eu/api/v1';
 
@@ -927,8 +942,12 @@ function renderPrimitiveArray(container, arr, key){
 // their ID without retyping it) and a small manager for that cache.
 function renderAdminsSection(container, arr, path){
   container.innerHTML = '';
+  adminNameDisplaySyncers = [];
 
   arr.forEach((val, idx)=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-row-wrap';
+
     const row = document.createElement('div');
     row.className = 'array-item';
     const inp = primitiveInput(val, (v)=>{ arr[idx] = v; });
@@ -957,7 +976,27 @@ function renderAdminsSection(container, arr, path){
     rm.addEventListener('click', ()=>{ arr.splice(idx,1); rerenderAll(); });
     row.appendChild(rm);
 
-    container.appendChild(row);
+    wrap.appendChild(row);
+
+    // Read-only display, not an edit box — shows the cached name for this
+    // ID (if this ID has one saved in the admin cache) so a list of raw
+    // IDs is actually readable. Stays in sync as the ID is typed, without
+    // needing a full rerenderAll() for every keystroke.
+    const nameDisplay = document.createElement('div');
+    nameDisplay.className = 'admin-name-display';
+    wrap.appendChild(nameDisplay);
+    function syncNameDisplay(){
+      const id = String(arr[idx] ?? '').trim();
+      const cached = id ? adminCache.find(a => a.id === id) : null;
+      const name = cached && cached.name ? cached.name.trim() : '';
+      nameDisplay.textContent = name ? '👤 ' + name : '';
+      nameDisplay.style.display = name ? '' : 'none';
+    }
+    syncNameDisplay();
+    inp.addEventListener('input', syncNameDisplay);
+    adminNameDisplaySyncers.push(syncNameDisplay);
+
+    container.appendChild(wrap);
   });
 
   const addBtn = document.createElement('button');
@@ -1090,7 +1129,11 @@ function renderAdminCacheManager(container){
     nameInput.className = 'admin-cache-compact-name';
     nameInput.placeholder = 'Name';
     nameInput.value = entry.name || '';
-    nameInput.addEventListener('input', ()=>{ entry.name = nameInput.value; saveAdminCache(); });
+    nameInput.addEventListener('input', ()=>{
+      entry.name = nameInput.value;
+      saveAdminCache();
+      adminNameDisplaySyncers.forEach(fn => fn());
+    });
     row.appendChild(nameInput);
 
     const idInput = document.createElement('input');
@@ -1098,7 +1141,11 @@ function renderAdminCacheManager(container){
     idInput.className = 'admin-cache-compact-id';
     idInput.placeholder = 'ID';
     idInput.value = entry.id || '';
-    idInput.addEventListener('input', ()=>{ entry.id = idInput.value; saveAdminCache(); });
+    idInput.addEventListener('input', ()=>{
+      entry.id = idInput.value;
+      saveAdminCache();
+      adminNameDisplaySyncers.forEach(fn => fn());
+    });
     row.appendChild(idInput);
 
     const rm = document.createElement('button');
