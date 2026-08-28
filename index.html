@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="shortcut icon" type="image/x-icon" href="./AR-Logo-White-256.ico">
 <title>Server Config Editor</title>
 <style>
   :root{
@@ -177,10 +176,12 @@
   .mod-compact-name{flex:2 1 140px;}
   .mod-compact-version{flex:0 0 80px;}
   .mod-compact-note{flex:1 1 auto; color:var(--muted); font-style:italic; border-style:dashed;}
-  .mod-compact-remove{
+  .mod-compact-remove, .mod-compact-details{
     flex:0 0 auto; width:24px; height:24px; padding:0; line-height:1; font-size:15px;
-    display:flex; align-items:center; justify-content:center;
+    display:flex; align-items:center; justify-content:center; border-radius:50%;
   }
+  .mod-compact-details{font-size:12px;}
+  .mod-compact-details:disabled{opacity:.35; cursor:default;}
   .mod-compact-select{flex:0 0 auto;}
   .mod-list-empty{padding:14px; font-size:12px; color:var(--muted); text-align:center;}
   .admin-cache-row{display:flex; gap:8px; margin-top:10px; align-items:center;}
@@ -303,6 +304,18 @@
     display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto;
     border:1px solid var(--border); border-radius:8px; padding:6px; background:var(--panel);
   }
+  .mod-order-rows{
+    display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto;
+    border:1px solid var(--border); border-radius:8px; padding:6px; background:var(--panel);
+    margin-top:8px;
+  }
+  .mod-order-row{
+    font-size:12px; padding:5px 7px; border-radius:6px; background:var(--panel2);
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  }
+  .mod-order-row .arrow{color:var(--muted);}
+  .mod-order-row strong{font-weight:700;}
+  .mod-order-row .idx{color:var(--muted); font-size:11px;}
   .drop{
     border:2px dashed var(--border); border-radius:12px; padding:30px; text-align:center;
     color:var(--muted); font-size:13px; margin-bottom:16px;
@@ -1473,7 +1486,10 @@ function buildCompactModRow(mod, idx, arr, opts){
     idInput.className = 'mod-compact-id';
     idInput.placeholder = 'Mod ID';
     idInput.value = mod.modId ?? '';
-    idInput.addEventListener('input', ()=>{ mod.modId = idInput.value; });
+    idInput.addEventListener('input', ()=>{
+      mod.modId = idInput.value;
+      syncDetailsBtn();
+    });
     row.appendChild(idInput);
 
     const nameInput = document.createElement('input');
@@ -1502,6 +1518,36 @@ function buildCompactModRow(mod, idx, arr, opts){
     note.textContent = "Not a normal mod entry — remove it, or fix it via Raw JSON.";
     row.appendChild(note);
   }
+
+  const detailsBtn = document.createElement('button');
+  detailsBtn.type = 'button';
+  detailsBtn.className = 'btn small mod-compact-details';
+  detailsBtn.textContent = '📄';
+  // Reflects live, since typing an ID into a previously-empty row doesn't
+  // otherwise trigger a redraw of this row.
+  function syncDetailsBtn(){
+    const hasId = isPlainObj && String(mod.modId || '').trim();
+    detailsBtn.disabled = !hasId;
+    detailsBtn.title = isPlainObj
+      ? (hasId ? 'View mod details' : 'No mod ID to look up yet')
+      : 'Not a normal mod entry';
+  }
+  syncDetailsBtn();
+  detailsBtn.addEventListener('click', async ()=>{
+    const modId = isPlainObj ? String(mod.modId || '').trim() : '';
+    if (!modId){ toast('This mod has no ID to look up'); return; }
+    detailsBtn.disabled = true;
+    const original = detailsBtn.textContent;
+    detailsBtn.textContent = '…';
+    try{
+      const stub = await resolveModStub(modId);
+      openModOverlay(stub, arr, ()=> opts.onChange && opts.onChange());
+    } finally {
+      detailsBtn.textContent = original;
+      syncDetailsBtn();
+    }
+  });
+  row.appendChild(detailsBtn);
 
   const rm = document.createElement('button');
   rm.type = 'button';
@@ -1895,6 +1941,219 @@ function openModListOverlay(arr, onClose){
       rowsWrap.appendChild(row);
     });
     depReviewResults.appendChild(rowsWrap);
+  });
+
+  // Load order — checks/fixes the position of each mod relative to its own
+  // dependencies. The convention here: a mod's dependencies are listed
+  // BELOW it (higher index) than the mod that depends on them. This is
+  // purely organizational (Reforger resolves load order from declared
+  // dependencies regardless of array position) but keeps a long list
+  // readable and matches how you want it laid out.
+  //
+  // Only direct dependencies are used for the pairwise checks below —
+  // resolving every pair of (mod, direct dependency) into the right
+  // relative order is enough to also put transitive/nested dependencies in
+  // the right place, the same way a topological sort only needs direct
+  // edges. Dependencies that aren't currently in your list are outside the
+  // scope of this check (that's what Dependency Review above is for).
+  const orderPanel = document.createElement('div');
+  orderPanel.className = 'mod-dep-review';
+  const orderHeader = document.createElement('div');
+  orderHeader.className = 'mod-dep-review-header';
+  const orderTitle = document.createElement('div');
+  orderTitle.className = 'mod-dep-review-title';
+  orderTitle.textContent = 'Load Order';
+  orderHeader.appendChild(orderTitle);
+  const orderBtnRow = document.createElement('div');
+  orderBtnRow.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap;';
+  const checkOrderBtn = document.createElement('button');
+  checkOrderBtn.type = 'button';
+  checkOrderBtn.className = 'btn small';
+  checkOrderBtn.textContent = 'Check Order';
+  const reorderBtn = document.createElement('button');
+  reorderBtn.type = 'button';
+  reorderBtn.className = 'btn small';
+  reorderBtn.textContent = 'Reorder for Dependencies';
+  orderBtnRow.appendChild(checkOrderBtn);
+  orderBtnRow.appendChild(reorderBtn);
+  orderHeader.appendChild(orderBtnRow);
+  orderPanel.appendChild(orderHeader);
+  const orderStatus = document.createElement('div');
+  orderStatus.className = 'mod-dep-review-status';
+  orderStatus.textContent = 'Checks that each mod’s dependencies are positioned below it (higher up = depends on things below it). Only considers dependencies already in your list.';
+  orderPanel.appendChild(orderStatus);
+  const orderResults = document.createElement('div');
+  orderPanel.appendChild(orderResults);
+  body.appendChild(orderPanel);
+
+  // Resolves the direct-dependency modId set for every installed mod that's
+  // actually present in `arr`, keyed by modId, restricted to dependencies
+  // that are themselves installed (the only ones a position check can act
+  // on). Shared by both Check Order and Reorder below.
+  let orderToken = 0;
+  async function buildInstalledDepMap(onProgress){
+    const roots = arr.filter(m => m && typeof m === 'object' && m.modId);
+    const installedIds = new Set(roots.map(m => String(m.modId)));
+    const depMap = new Map();
+    let checked = 0;
+    await mapWithConcurrency(roots, 5, async (root)=>{
+      const stub = await resolveModStub(root.modId);
+      const deps = (stub.dependencyIds || []).map(String).filter(id => installedIds.has(id) && id !== String(root.modId));
+      depMap.set(String(root.modId), new Set(deps));
+      checked++;
+      if (onProgress) onProgress(checked, roots.length);
+    });
+    return { roots, depMap };
+  }
+
+  function findOrderViolations(depMap){
+    const violations = [];
+    arr.forEach((mod, i)=>{
+      if (!mod || typeof mod !== 'object' || !mod.modId) return;
+      const deps = depMap.get(String(mod.modId));
+      if (!deps) return;
+      deps.forEach(depId=>{
+        const j = arr.findIndex(x => x && typeof x === 'object' && String(x.modId) === depId);
+        if (j !== -1 && j < i){
+          violations.push({ modIndex: i, mod, depIndex: j, dep: arr[j] });
+        }
+      });
+    });
+    return violations;
+  }
+
+  function renderOrderViolations(violations){
+    orderResults.innerHTML = '';
+    if (!violations.length) return;
+    const rowsWrap = document.createElement('div');
+    rowsWrap.className = 'mod-order-rows';
+    violations.forEach(v=>{
+      const row = document.createElement('div');
+      row.className = 'mod-order-row';
+      const posEl = document.createElement('span');
+      posEl.className = 'idx';
+      posEl.textContent = '#' + (v.modIndex + 1);
+      const nameEl = document.createElement('strong');
+      nameEl.textContent = v.mod.name || v.mod.modId;
+      const arrowEl = document.createElement('span');
+      arrowEl.className = 'arrow';
+      arrowEl.textContent = 'depends on';
+      const depNameEl = document.createElement('strong');
+      depNameEl.textContent = v.dep.name || v.dep.modId;
+      const detailEl = document.createElement('span');
+      detailEl.className = 'idx';
+      detailEl.textContent = 'at #' + (v.depIndex + 1) + ' — should be below #' + (v.modIndex + 1);
+      row.append(posEl, nameEl, arrowEl, depNameEl, detailEl);
+      rowsWrap.appendChild(row);
+    });
+    orderResults.appendChild(rowsWrap);
+  }
+
+  checkOrderBtn.addEventListener('click', async ()=>{
+    const myToken = ++orderToken;
+    checkOrderBtn.disabled = true;
+    reorderBtn.disabled = true;
+    orderResults.innerHTML = '';
+    const { roots, depMap } = await buildInstalledDepMap((done, total)=>{
+      if (myToken === orderToken) orderStatus.textContent = 'Checking order… (' + done + '/' + total + ')';
+    });
+    if (myToken !== orderToken) return;
+    checkOrderBtn.disabled = false;
+    reorderBtn.disabled = false;
+    if (!roots.length){
+      orderStatus.textContent = 'No mods installed to check.';
+      return;
+    }
+    const violations = findOrderViolations(depMap);
+    if (!violations.length){
+      orderStatus.textContent = '✓ Order looks good — ' + roots.length + ' mod' + (roots.length === 1 ? '' : 's') + ' checked, no violations.';
+      return;
+    }
+    orderStatus.textContent = '⚠ ' + violations.length + ' order violation' + (violations.length === 1 ? '' : 's') + ' — a dependency is listed above the mod that needs it:';
+    renderOrderViolations(violations);
+  });
+
+  reorderBtn.addEventListener('click', async ()=>{
+    const myToken = ++orderToken;
+    checkOrderBtn.disabled = true;
+    reorderBtn.disabled = true;
+    orderResults.innerHTML = '';
+    const { roots, depMap } = await buildInstalledDepMap((done, total)=>{
+      if (myToken === orderToken) orderStatus.textContent = 'Resolving dependencies… (' + done + '/' + total + ')';
+    });
+    if (myToken !== orderToken) return;
+    if (!roots.length){
+      orderStatus.textContent = 'No mods installed to reorder.';
+      checkOrderBtn.disabled = false;
+      reorderBtn.disabled = false;
+      return;
+    }
+
+    // Walks the list left to right. Whenever the current mod (M) has a
+    // dependency (D) sitting above it — the wrong side, since dependencies
+    // belong below their dependents — D is spliced out and reinserted
+    // directly after M's (shifted) position, then M is rechecked in place
+    // before moving on. Each move is tracked per-mod so a genuine circular
+    // dependency (D keeps getting pushed back above M by some other mod in
+    // the cycle) is caught precisely, plus a blunt total-move cap as a
+    // backstop.
+    const maxPerMod = Math.max(1, arr.length);
+    const maxTotalMoves = arr.length * 3;
+    const moveCounts = new Map();
+    let totalMoves = 0;
+    let circularIds = null;
+    let i = 0;
+    while (i < arr.length){
+      const M = arr[i];
+      const deps = (M && typeof M === 'object' && M.modId) ? depMap.get(String(M.modId)) : null;
+      let moved = false;
+      if (deps && deps.size){
+        for (const depId of deps){
+          const j = arr.findIndex(x => x && typeof x === 'object' && String(x.modId) === depId);
+          if (j !== -1 && j < i){
+            const [D] = arr.splice(j, 1);
+            const newMIndex = i - 1; // M shifted left by one — something above it was removed
+            arr.splice(newMIndex + 1, 0, D);
+            totalMoves++;
+            const c = (moveCounts.get(depId) || 0) + 1;
+            moveCounts.set(depId, c);
+            if (c > maxPerMod || totalMoves > maxTotalMoves){
+              circularIds = [...moveCounts.entries()].filter(([,cnt]) => cnt > maxPerMod).map(([id]) => id);
+              if (!circularIds.length) circularIds = [depId];
+            }
+            i = newMIndex;
+            moved = true;
+            break;
+          }
+        }
+      }
+      if (circularIds) break;
+      if (!moved) i++;
+    }
+
+    checkOrderBtn.disabled = false;
+    reorderBtn.disabled = false;
+    currentVisible = drawList();
+    updateHeader();
+
+    if (circularIds){
+      const names = circularIds.map(id=>{
+        const m = arr.find(x => x && typeof x === 'object' && String(x.modId) === id);
+        return m ? (m.name || m.modId) : id;
+      });
+      orderStatus.textContent = '⚠ Circular dependency detected — stopped after ' + totalMoves + ' move' + (totalMoves === 1 ? '' : 's') + '. Involved: ' + names.join(', ') + '.';
+      orderResults.innerHTML = '';
+      toast('Stopped — circular dependency detected');
+      return;
+    }
+
+    if (!totalMoves){
+      orderStatus.textContent = '✓ Already in the right order — nothing to move.';
+    } else {
+      orderStatus.textContent = '✓ Reordered — moved ' + totalMoves + ' mod' + (totalMoves === 1 ? '' : 's') + ' to fix dependency order.';
+      toast('Reordered ' + totalMoves + ' mod' + (totalMoves === 1 ? '' : 's') + ' for dependencies');
+    }
+    orderResults.innerHTML = '';
   });
 
   body.appendChild(buildModiscoverLookupWidget(arr, ()=>{ currentVisible = drawList(); updateHeader(); }));
