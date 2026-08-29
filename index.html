@@ -1210,7 +1210,7 @@
       padding: 10px 0;
     }
   </style>
-   <link rel="icon" type="image/x-icon" href="./AR-Logo-White-256.ico">
+  <link rel="icon" type="image/x-icon" href="./AR-Logo-White-256.ico">
 </head>
 
 <body>
@@ -1222,9 +1222,17 @@
     <button class="btn" id="rawBtn">Raw JSON</button>
     <button class="btn" id="savedConfigsBtn">Saved Configs</button>
     <button class="btn good" id="downloadBtn">Download JSON</button>
+    <button class="btn" id="exportEnvBtn"
+      title="Download everything stored in this browser — the current config, all Saved Configs slots, and the admin cache — as one file">⬇
+      Export Site Env</button>
+    <button class="btn" id="importEnvBtn"
+      title="Restore the current config, Saved Configs, and admin cache from an Export Site Env file">⬆ Import Site
+      Env</button>
+    <input type="file" id="envFileInput" accept=".json,application/json" style="display:none;">
     <div class="sub">Categories are prioritized: <strong>Game Settings</strong> → <strong>Mods</strong> → everything
       else. Collapse/expand any card. Your edits are auto-saved in this browser and restored next time you open this
-      page — click Download whenever you want an actual .json file.</div>
+      page — click Download whenever you want an actual .json file. Use <strong>Export/Import Site Env</strong> to move
+      everything (config, saved slots, admin cache) to another browser.</div>
   </header>
 
   <div class="active-config-bar" id="activeConfigBar">
@@ -3547,6 +3555,87 @@
       a.remove();
       URL.revokeObjectURL(url);
       toast('Downloaded');
+    });
+
+    // Export/Import Site Env — bundles everything this tool keeps in this
+    // browser's localStorage (the current working config, every Saved Configs
+    // slot, and the admin cache) into one file, so it can be moved to another
+    // browser/machine in one shot rather than juggling three separate exports.
+    document.getElementById('exportEnvBtn').addEventListener('click', () => {
+      const bundle = {
+        kind: 'armaConfigEditorSiteEnv',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: data,
+        savedConfigs: savedConfigs,
+        adminCache: adminCache,
+      };
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'site_env.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast('Exported site environment');
+    });
+
+    const envFileInput = document.getElementById('envFileInput');
+    document.getElementById('importEnvBtn').addEventListener('click', () => envFileInput.click());
+    envFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(reader.result);
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Not a valid Site Env file — expected an object with "data", "savedConfigs", and/or "adminCache".');
+          }
+          const hasData = parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data);
+          const hasSaved = Array.isArray(parsed.savedConfigs);
+          const hasAdmins = Array.isArray(parsed.adminCache);
+          if (!hasData && !hasSaved && !hasAdmins) {
+            throw new Error('This file doesn’t contain a config, Saved Configs, or an admin cache — nothing to import.');
+          }
+
+          const parts = [];
+          if (hasData) parts.push('the current config');
+          if (hasSaved) parts.push(parsed.savedConfigs.length + ' saved config' + (parsed.savedConfigs.length === 1 ? '' : 's'));
+          if (hasAdmins) parts.push(parsed.adminCache.length + ' cached admin' + (parsed.adminCache.length === 1 ? '' : 's'));
+          if (!confirm('Import site environment from "' + file.name + '"?\n\nThis replaces: ' + parts.join(', ') + '.\nThis cannot be undone.')) return;
+
+          if (hasData) data = stripEmptyModVersions(parsed.data);
+          if (hasSaved) {
+            savedConfigs = parsed.savedConfigs.filter(e => e && typeof e === 'object' && typeof e.name === 'string' && e.data && typeof e.data === 'object');
+          }
+          if (hasAdmins) {
+            adminCache = parsed.adminCache.filter(a => a && typeof a === 'object' && typeof a.id === 'string');
+          }
+
+          let storageFailed = false;
+          if (hasData) saveDataCache();
+          if (hasSaved && !persistSavedConfigs()) storageFailed = true;
+          if (hasAdmins) saveAdminCache();
+
+          closeModOverlay();
+          closeModListOverlay();
+          clearJsonError();
+          stopTrackingActiveConfig();
+          if (rawWrap.classList.contains('show')) rawArea.value = JSON.stringify(data, null, 4);
+          if (savedConfigsWrap.classList.contains('show')) renderSavedConfigsPanel();
+          rerenderAll();
+          toast(storageFailed
+            ? 'Imported (Saved Configs may not have persisted — storage error)'
+            : 'Imported site environment: ' + parts.join(', '));
+        } catch (err) {
+          alert("Couldn't import that file: " + (err.message || 'invalid JSON.'));
+        }
+      };
+      reader.readAsText(file);
+      envFileInput.value = ''; // allow re-importing the same file again later
     });
 
     document.getElementById('rawBtn').addEventListener('click', () => {
